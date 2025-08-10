@@ -8,14 +8,17 @@ import net.neoforged.fml.event.lifecycle.FMLClientSetupEvent
 import net.neoforged.fml.event.lifecycle.FMLCommonSetupEvent
 import net.neoforged.fml.event.lifecycle.FMLDedicatedServerSetupEvent
 import net.neoforged.neoforge.client.event.ClientTickEvent
+import net.neoforged.neoforge.common.NeoForge
 import nipah.edify.block.ModBlocks
 import nipah.edify.gizmos.Depth
 import nipah.edify.gizmos.Gizmos
+import nipah.edify.utils.TickScheduler
 import org.apache.logging.log4j.Level
 import org.apache.logging.log4j.LogManager
 import org.apache.logging.log4j.Logger
 import thedarkcolour.kotlinforforge.neoforge.forge.MOD_BUS
 import thedarkcolour.kotlinforforge.neoforge.forge.runForDist
+
 
 /**
  * Main mod class.
@@ -34,6 +37,7 @@ object Edify {
 
         // Register the KDeferredRegister to the mod-specific event bus
         ModBlocks.REGISTRY.register(MOD_BUS)
+        NeoForge.EVENT_BUS.register(TickScheduler::class.java)
 
         val obj = runForDist(clientTarget = {
             MOD_BUS.addListener(::onClientSetup)
