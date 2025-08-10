@@ -1,16 +1,19 @@
 package nipah.edify.utils
 
-class Array3D<T>(
+import net.minecraft.core.HolderLookup
+import net.minecraft.nbt.CompoundTag
+import net.neoforged.neoforge.common.util.INBTSerializable
+import org.jetbrains.annotations.UnknownNullability
+
+class Array3d<T: INBTSerializable<CompoundTag>>(
     val sizeX: Int,
     val sizeY: Int,
     val sizeZ: Int,
-    init: (x: Int, y: Int, z: Int) -> T,
-) {
+    init: () -> T,
+): INBTSerializable<CompoundTag> {
+    private val emptyItem = init
     private val data: Array<Any?> = Array(sizeX * sizeY * sizeZ) { i ->
-        val x = i % sizeX
-        val y = (i / sizeX) % sizeY
-        val z = i / (sizeX * sizeY)
-        init(x, y, z)
+        init()
     }
 
     private fun index(x: Int, y: Int, z: Int): Int {
@@ -20,6 +23,11 @@ class Array3D<T>(
         return (z * sizeY + y) * sizeX + x
     }
 
+    operator fun get(index3d: Int): T {
+        @Suppress("UNCHECKED_CAST")
+        return data[index3d] as T
+    }
+
     operator fun get(x: Int, y: Int, z: Int): T {
         @Suppress("UNCHECKED_CAST")
         return data[index(x, y, z)] as T
@@ -27,6 +35,37 @@ class Array3D<T>(
 
     operator fun set(x: Int, y: Int, z: Int, value: T) {
         data[index(x, y, z)] = value
+    }
+
+    override fun serializeNBT(p0: HolderLookup.Provider): @UnknownNullability CompoundTag {
+        val tag = CompoundTag()
+        tag.putInt("sizeX", sizeX)
+        tag.putInt("sizeY", sizeY)
+        tag.putInt("sizeZ", sizeZ)
+        val dataList = net.minecraft.nbt.ListTag()
+        for (i in data.indices) {
+            val valueTag = this[i].serializeNBT(p0)
+            valueTag.putString("value", data[i].toString())
+            dataList.add(valueTag)
+        }
+        tag.put("data", dataList)
+        return tag
+    }
+
+    override fun deserializeNBT(p0: HolderLookup.Provider, p1: CompoundTag) {
+        val sizeX = p1.getInt("sizeX")
+        val sizeY = p1.getInt("sizeY")
+        val sizeZ = p1.getInt("sizeZ")
+        if (sizeX != this.sizeX || sizeY != this.sizeY || sizeZ != this.sizeZ) {
+            throw IllegalArgumentException("Size mismatch: expected ($sizeX, $sizeY, $sizeZ), got (${this.sizeX}, ${this.sizeY}, ${this.sizeZ})")
+        }
+        val dataList = p1.getList("data", 10) // 10 is the type ID for CompoundTag
+        for (i in data.indices) {
+            val valueTag = dataList.getCompound(i)
+            val value = emptyItem()
+            value.deserializeNBT(p0, valueTag)
+            data[i] = value
+        }
     }
 }
 
