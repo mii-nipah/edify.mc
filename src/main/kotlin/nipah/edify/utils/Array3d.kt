@@ -5,7 +5,7 @@ import net.minecraft.nbt.CompoundTag
 import net.neoforged.neoforge.common.util.INBTSerializable
 import org.jetbrains.annotations.UnknownNullability
 
-class Array3d<T: INBTSerializable<CompoundTag>>(
+class Array3d<T>(
     val sizeX: Int,
     val sizeY: Int,
     val sizeZ: Int,
@@ -44,8 +44,11 @@ class Array3d<T: INBTSerializable<CompoundTag>>(
         tag.putInt("sizeZ", sizeZ)
         val dataList = net.minecraft.nbt.ListTag()
         for (i in data.indices) {
-            val valueTag = this[i].serializeNBT(p0)
-            valueTag.putString("value", data[i].toString())
+            val item = this[i]
+            if (item !is INBTSerializable<*>) {
+                throw IllegalArgumentException("Item at index $i does not implement INBTSerializable")
+            }
+            val valueTag = item.serializeNBT(p0)
             dataList.add(valueTag)
         }
         tag.put("data", dataList)
@@ -62,10 +65,10 @@ class Array3d<T: INBTSerializable<CompoundTag>>(
         val dataList = p1.getList("data", 10) // 10 is the type ID for CompoundTag
         for (i in data.indices) {
             val valueTag = dataList.getCompound(i)
-            val value = emptyItem()
+            val value = emptyItem() as? INBTSerializable<CompoundTag>
+                ?: throw IllegalArgumentException("Item at index $i does not implement INBTSerializable")
             value.deserializeNBT(p0, valueTag)
             data[i] = value
         }
     }
 }
-

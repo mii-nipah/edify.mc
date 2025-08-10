@@ -37,7 +37,8 @@ object Edify {
 
         // Register the KDeferredRegister to the mod-specific event bus
         ModBlocks.REGISTRY.register(MOD_BUS)
-        NeoForge.EVENT_BUS.register(TickScheduler::class.java)
+        NeoForge.EVENT_BUS.register(TickScheduler)
+        NeoForge.EVENT_BUS.register(ChunkEvents)
 
         val obj = runForDist(clientTarget = {
             MOD_BUS.addListener(::onClientSetup)
@@ -83,12 +84,32 @@ object Edify {
             net.minecraft.world.phys.HitResult.Type.BLOCK -> {
                 val bhr = hit as net.minecraft.world.phys.BlockHitResult
                 val hitPos = bhr.location
-                // line to target
-                Gizmos.line(eye, hitPos, 0xFFFF5555.toInt(), ttl = 1)
+                val bpos = bhr.blockPos
+
+                val chunk = lvl.getChunkAt(bpos)
+                val chunkData = WorldData.getChunkData(chunk)
+                val blockData = chunkData.getBlockSafe(bpos.x, bpos.y, bpos.z)
+
+                val color = when (blockData) {
+                    is BlockData.Air -> 0x80FFFFFF.toInt()
+                    is BlockData.Bedrock -> 0x80FF0000.toInt()
+                    is BlockData.Foundation -> 0x8000FF00.toInt()
+                    is BlockData.Group -> {
+                        when (blockData.id % 4) {
+                            1 -> 0x800000FF.toInt()
+                            2 -> 0x80FFFF00.toInt()
+                            3 -> 0x80FF00FF.toInt()
+                            else -> 0x80808080.toInt()
+                        }
+                    }
+
+                    is BlockData.Deferred -> 0x8000FFFF.toInt()
+                }
+
                 // outline the block
-                val box = net.minecraft.world.phys.AABB(bhr.blockPos)
+                val box = net.minecraft.world.phys.AABB(bpos)
                     .inflate(0.002) // avoid Z-fighting
-                Gizmos.box(box, 0x80FFFFFF.toInt(), depth = Depth.XRAY, ttl = 1)
+                Gizmos.box(box, color, depth = Depth.XRAY, ttl = 1)
             }
 
             else -> {}
