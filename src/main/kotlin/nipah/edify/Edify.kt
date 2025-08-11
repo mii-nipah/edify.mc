@@ -1,6 +1,7 @@
 package nipah.edify
 
 import net.minecraft.client.Minecraft
+import net.minecraft.core.BlockPos
 import net.neoforged.bus.api.SubscribeEvent
 import net.neoforged.fml.common.EventBusSubscriber
 import net.neoforged.fml.common.Mod
@@ -10,6 +11,7 @@ import net.neoforged.fml.event.lifecycle.FMLDedicatedServerSetupEvent
 import net.neoforged.neoforge.client.event.ClientTickEvent
 import net.neoforged.neoforge.common.NeoForge
 import nipah.edify.block.ModBlocks
+import nipah.edify.client.ClientWorldData
 import nipah.edify.gizmos.Depth
 import nipah.edify.gizmos.Gizmos
 import nipah.edify.utils.TickScheduler
@@ -39,6 +41,7 @@ object Edify {
         ModBlocks.REGISTRY.register(MOD_BUS)
         NeoForge.EVENT_BUS.register(TickScheduler)
         NeoForge.EVENT_BUS.register(ChunkEvents)
+        WorldData.groupAt(BlockPos.ZERO)
 
         val obj = runForDist(clientTarget = {
             MOD_BUS.addListener(::onClientSetup)
@@ -83,19 +86,15 @@ object Edify {
         when (hit.type) {
             net.minecraft.world.phys.HitResult.Type.BLOCK -> {
                 val bhr = hit as net.minecraft.world.phys.BlockHitResult
-                val hitPos = bhr.location
                 val bpos = bhr.blockPos
 
-                val chunk = lvl.getChunkAt(bpos)
-                val chunkData = WorldData.getChunkData(chunk)
-                val blockData = chunkData.getBlockSafe(bpos.x, bpos.y, bpos.z)
+                val blockGroup = ClientWorldData.groupAtOrRequest(bpos)
 
-                val color = when (blockData) {
-                    is BlockData.Air -> 0x80FFFFFF.toInt()
-                    is BlockData.Bedrock -> 0x80FF0000.toInt()
-                    is BlockData.Foundation -> 0x8000FF00.toInt()
-                    is BlockData.Group -> {
-                        when (blockData.id % 4) {
+                val color = when (blockGroup) {
+                    is BlockGroup.Bedrock -> 0x80FF0000.toInt()
+                    is BlockGroup.Natural -> 0x8000FF00.toInt()
+                    is BlockGroup.Group -> {
+                        when (blockGroup.id % 4) {
                             1 -> 0x800000FF.toInt()
                             2 -> 0x80FFFF00.toInt()
                             3 -> 0x80FF00FF.toInt()
@@ -103,13 +102,19 @@ object Edify {
                         }
                     }
 
-                    is BlockData.Deferred -> 0x8000FFFF.toInt()
+                    null -> 0x80000000.toInt()
                 }
+                val groupId =
+                    if (blockGroup is BlockGroup.Group) blockGroup.id
+                    else null
 
                 // outline the block
                 val box = net.minecraft.world.phys.AABB(bpos)
                     .inflate(0.002) // avoid Z-fighting
                 Gizmos.box(box, color, depth = Depth.XRAY, ttl = 1)
+                if (groupId != null) {
+                    Gizmos.text(groupId.toString(), bpos.center.add(0.0, 0.5, 0.0), color, true)
+                }
             }
 
             else -> {}
