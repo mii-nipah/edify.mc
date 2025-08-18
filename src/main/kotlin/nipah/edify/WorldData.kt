@@ -118,29 +118,10 @@ object WorldData {
                 continue
             }
             level.destroyBlock(bpos, false)
-//            FallingBlockEntity.fall(level, bpos, block)
         }
     }
 
-    fun unloadChunkData(chunk: LevelChunk, chunkPos: ChunkPos) {
-//        chunks.remove(chunkPos)
-//        chunk.forEachBlock { lpos ->
-//            val pos = chunk.localToWorldPos(lpos)
-//            if (pos in bedrock.blocks) {
-//                bedrock.blocks.remove(pos)
-//            }
-//            else if (pos in natural.blocks) {
-//                natural.blocks.remove(pos)
-//            }
-//            else {
-//                val group = directGroupAt(pos)
-//                if (group != null) {
-//                    group.blocks.remove(pos)
-//                    if (group.blocks.isEmpty()) {
-//                        groups.remove(group)
-//                    }
-//                }
-//            }
-//        }
+    fun unloadChunkData(chunkPos: ChunkPos) {
+        chunkData.remove(chunkPos)
     }
 }

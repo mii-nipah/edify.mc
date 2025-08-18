@@ -25,7 +25,7 @@ object ChunkEvents {
     @SubscribeEvent
     fun onChunkUnload(e: ChunkEvent.Unload) {
         val pos = e.chunk.pos
-//        WorldData.unloadChunkData(pos)
+        WorldData.unloadChunkData(pos)
     }
 
     private val queued = mutableSetOf<Triple<LevelChunk, BlockPos, BlockChangeKind>>()
