@@ -9,11 +9,22 @@ fun createBatch(
     blocks: List<BlockPos>,
     origin: BlockPos = blocks.first(),
 ) {
+    if (blocks.isEmpty()) return
+    val centerOfMass = blocks.fold(Vector3f(0f, 0f, 0f)) { acc, pos ->
+        acc.add(pos.x.toFloat(), pos.y.toFloat(), pos.z.toFloat())
+    }.div(blocks.size.toFloat())
+    val velocity = Vector3f(
+        centerOfMass.x - origin.x.toFloat(),
+        centerOfMass.y - origin.y.toFloat(),
+        centerOfMass.z - origin.z.toFloat()
+    ).normalize().mul(-0.1f)
+    velocity.x *= -1f
+    velocity.z *= -1f
     val batch = FallingBatch(
         origin,
         null,
         pos = Vector3f(origin.x.toFloat(), origin.y.toFloat(), origin.z.toFloat()),
-        vel = Vector3f(0f, -0.1f, 0f),
+        vel = velocity,
         blocks = blocks.map { pos ->
             pos to level.getBlockState(pos)
         }
