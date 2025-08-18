@@ -6,6 +6,7 @@ import net.minecraft.world.level.chunk.LevelChunk
 import net.neoforged.bus.api.SubscribeEvent
 import net.neoforged.neoforge.event.level.BlockEvent
 import net.neoforged.neoforge.event.level.ChunkEvent
+import net.neoforged.neoforge.event.level.ExplosionEvent
 import net.neoforged.neoforge.event.tick.ServerTickEvent
 import nipah.edify.utils.TickScheduler
 
@@ -82,6 +83,22 @@ object ChunkEvents {
                 e.level.chunkSource.getChunkNow(it.pos.x, it.pos.z)
             } ?: return
             queued.add(Triple(chunk, pos, BlockChangeKind.Landed))
+        }
+    }
+
+    @SubscribeEvent
+    fun onExplosion(e: ExplosionEvent.Detonate) {
+        val blocks = e.affectedBlocks
+        if (blocks.isEmpty()) return
+        val tenPercentileCount = (blocks.size * 0.1).toInt().let {
+            if (it < 1) 1 else it
+        }
+        val randomBlocks = blocks.shuffled().take(tenPercentileCount)
+        for (block in randomBlocks) {
+            val chunk = e.level.getChunk(block).let {
+                e.level.chunkSource.getChunkNow(it.pos.x, it.pos.z)
+            } ?: continue
+            queued.add(Triple(chunk, block, BlockChangeKind.Broken))
         }
     }
 }
