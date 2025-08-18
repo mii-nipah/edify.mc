@@ -9,6 +9,7 @@ import net.minecraft.core.BlockPos
 import net.minecraft.world.level.block.state.BlockState
 import org.joml.Matrix4f
 import org.joml.Vector3f
+import java.util.concurrent.CopyOnWriteArrayList
 
 class FallingBatch(
     val origin: BlockPos,
@@ -25,7 +26,7 @@ class FallingBatch(
 }
 
 object BatchRenderer {
-    val batches = mutableListOf<FallingBatch>()
+    val batches = CopyOnWriteArrayList<FallingBatch>()
 
     fun add(batch: FallingBatch) = batches.add(batch)
     fun clear() {

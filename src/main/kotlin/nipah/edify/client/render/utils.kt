@@ -9,7 +9,6 @@ fun createBatch(
     blocks: List<BlockPos>,
     origin: BlockPos = blocks.first(),
 ) {
-//    val mesh = buildSolidMesh(level, blocks, origin)
     val batch = FallingBatch(
         origin,
         null,

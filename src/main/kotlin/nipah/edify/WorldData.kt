@@ -1,6 +1,5 @@
 package nipah.edify
 
-import com.mojang.blaze3d.systems.RenderSystem
 import net.minecraft.core.BlockPos
 import net.minecraft.world.level.ChunkPos
 import net.minecraft.world.level.chunk.LevelChunk
@@ -111,8 +110,6 @@ object WorldData {
             level,
             fall
         )
-        RenderSystem.recordRenderCall {
-        }
 
         for (bpos in fall) {
             val chunk = chunks.at(bpos) ?: continue
