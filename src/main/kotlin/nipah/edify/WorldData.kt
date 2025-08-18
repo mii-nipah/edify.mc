@@ -1,9 +1,10 @@
 package nipah.edify
 
+import com.mojang.blaze3d.systems.RenderSystem
 import net.minecraft.core.BlockPos
-import net.minecraft.world.entity.item.FallingBlockEntity
 import net.minecraft.world.level.ChunkPos
 import net.minecraft.world.level.chunk.LevelChunk
+import nipah.edify.client.render.createBatch
 import nipah.edify.utils.findNeighbor
 import nipah.edify.utils.forEachNeighbor
 import nipah.edify.utils.worldToLocalPos
@@ -102,15 +103,25 @@ object WorldData {
     }
 
     private fun fallingFun(chunks: ChunkAccess, fall: List<BlockPos>) {
+        if (fall.isEmpty()) return
+
         val level = chunks.level
+
+        createBatch(
+            level,
+            fall
+        )
+        RenderSystem.recordRenderCall {
+        }
+
         for (bpos in fall) {
             val chunk = chunks.at(bpos) ?: continue
             val block = chunk.getBlockState(bpos)
             if (block.isAir || block.isEmpty) {
                 continue
             }
-//            level.destroyBlock(bpos, true)
-            FallingBlockEntity.fall(level, bpos, block)
+            level.destroyBlock(bpos, false)
+//            FallingBlockEntity.fall(level, bpos, block)
         }
     }
 
