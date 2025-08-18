@@ -15,14 +15,14 @@ object Network {
             BlockGroupPacket.Request.type,
             BlockGroupPacket.Request.codec,
             { data, x ->
-                val pos = data.pos
-                val group = WorldData.groupAt(pos)
-                if (group != null) {
-                    x.reply(BlockGroupPacket.Response(pos, group))
-                }
-                else {
-                    x.reply(BlockGroupPacket.Response(pos, null))
-                }
+//                val pos = data.pos
+//                val group = WorldData.groupAt(pos)
+//                if (group != null) {
+//                    x.reply(BlockGroupPacket.Response(pos, group))
+//                }
+//                else {
+//                    x.reply(BlockGroupPacket.Response(pos, null))
+//                }
             }
         )
         reg.playToClient(

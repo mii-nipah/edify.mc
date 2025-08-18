@@ -39,8 +39,7 @@ sealed class BlockGroupPacket: CustomPacketPayload {
                     { buf, group ->
                         when (group) {
                             null -> buf.writeByte(-1)
-                            is BlockGroup.Bedrock -> buf.writeByte(0)
-                            is BlockGroup.Natural -> buf.writeByte(1)
+                            is BlockGroup.Foundation -> buf.writeByte(0)
                             is BlockGroup.Group -> {
                                 buf.writeByte(2)
                                 buf.writeInt(group.id)
@@ -51,8 +50,7 @@ sealed class BlockGroupPacket: CustomPacketPayload {
                         val type = buf.readByte().toInt()
                         when (type) {
                             -1 -> null
-                            0 -> BlockGroup.Bedrock()
-                            1 -> BlockGroup.Natural()
+                            0 -> BlockGroup.Foundation()
                             2 -> {
                                 val id = buf.readInt()
                                 BlockGroup.Group(id)
