@@ -28,3 +28,19 @@ inline fun BlockPos.forEachNeighbor(func: (BlockPos) -> Unit) {
     func(this.above())
     func(this.below())
 }
+
+inline fun BlockPos.findNeighbor(func: (BlockPos) -> Boolean): BlockPos? {
+    var res = func(this.north())
+    if (res) return this.north()
+    res = func(this.south())
+    if (res) return this.south()
+    res = func(this.east())
+    if (res) return this.east()
+    res = func(this.west())
+    if (res) return this.west()
+    res = func(this.above())
+    if (res) return this.above()
+    res = func(this.below())
+    if (res) return this.below()
+    return null
+}
