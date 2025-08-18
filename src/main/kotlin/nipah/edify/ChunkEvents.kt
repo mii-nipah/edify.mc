@@ -8,6 +8,7 @@ import net.neoforged.neoforge.event.level.BlockEvent
 import net.neoforged.neoforge.event.level.ChunkEvent
 import net.neoforged.neoforge.event.level.ExplosionEvent
 import net.neoforged.neoforge.event.tick.ServerTickEvent
+import nipah.edify.client.render.BatchRenderer
 import nipah.edify.utils.TickScheduler
 
 object ChunkEvents {
@@ -40,21 +41,32 @@ object ChunkEvents {
         batchedListeners.add(listener)
     }
 
+    private var serverTicks = 0
+
     @SubscribeEvent
     fun onServerTick(ev: ServerTickEvent.Post) {
-        if (queued.isEmpty()) return
-        for (cp in queued) {
-            // Notify batched listeners
-            val batch = queued.toList()
-            for (batchedListener in batchedListeners) {
-                batchedListener(batch)
+        if (queued.isEmpty().not()) {
+            for (cp in queued) {
+                // Notify batched listeners
+                val batch = queued.toList()
+                for (batchedListener in batchedListeners) {
+                    batchedListener(batch)
+                }
+                // Notify listeners
+                for (listener in listeners) {
+                    listener(cp.first, cp.second, cp.third)
+                }
             }
-            // Notify listeners
-            for (listener in listeners) {
-                listener(cp.first, cp.second, cp.third)
-            }
+            queued.clear()
         }
-        queued.clear()
+
+        serverTicks++
+//        if (serverTicks % 5 != 0) return
+        for (batch in BatchRenderer.batches) {
+            batch.tickServer(
+                ev.server.getLevel(batch.levelKey) ?: continue
+            )
+        }
     }
 
     @SubscribeEvent

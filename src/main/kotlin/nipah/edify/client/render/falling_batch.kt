@@ -6,20 +6,166 @@ import net.minecraft.client.Minecraft
 import net.minecraft.client.renderer.GameRenderer
 import net.minecraft.client.renderer.texture.TextureAtlas
 import net.minecraft.core.BlockPos
+import net.minecraft.core.particles.ParticleTypes
+import net.minecraft.resources.ResourceKey
+import net.minecraft.server.level.ServerLevel
+import net.minecraft.world.entity.item.ItemEntity
+import net.minecraft.world.level.Level
 import net.minecraft.world.level.block.state.BlockState
+import net.minecraft.world.phys.AABB
+import nipah.edify.utils.betweenClosedBlocks
+import nipah.edify.utils.minus
+import nipah.edify.utils.toVec3
+import nipah.edify.utils.toVec3i
 import org.joml.Matrix4f
 import org.joml.Vector3f
 import java.util.concurrent.CopyOnWriteArrayList
+import kotlin.random.Random
 
 class FallingBatch(
     val origin: BlockPos,
     val vbo: VertexBuffer?,
     var pos: Vector3f,
     var vel: Vector3f = Vector3f(0f, -0.1f, 0f),
-    val blocks: List<Pair<BlockPos, BlockState>>,
+    val travelled: Float = 0f,
+    val blocks: CopyOnWriteArrayList<Pair<BlockPos, BlockState>>,
+    val levelKey: ResourceKey<Level>,
 ) {
+    fun invalidate() {
+        cachedAabb = null
+    }
+
+    private var cachedAabb: AABB? = null
+    val aabb: AABB
+        get() {
+            if (cachedAabb != null) return cachedAabb!!
+            val minX = blocks.minOfOrNull { it.first.x } ?: origin.x
+            val minY = blocks.minOfOrNull { it.first.y } ?: origin.y
+            val minZ = blocks.minOfOrNull { it.first.z } ?: origin.z
+            val maxX = blocks.maxOfOrNull { it.first.x } ?: origin.x
+            val maxY = blocks.maxOfOrNull { it.first.y } ?: origin.y
+            val maxZ = blocks.maxOfOrNull { it.first.z } ?: origin.z
+
+            val minPos = BlockPos(minX, minY, minZ)
+            val maxPos = BlockPos(maxX, maxY, maxZ)
+
+            val aabb = AABB.encapsulatingFullBlocks(minPos, maxPos).also { cachedAabb = it }
+            val delta = pos.toVec3() - aabb.minPosition
+            aabb.move(delta)
+            return aabb
+        }
+
     fun tick() {
         pos.add(vel) // super simple; add gravity, damping, etc.
+        travelled + vel.length()
+        if (cachedAabb != null) {
+            val delta = pos.toVec3() - aabb.minPosition
+            cachedAabb = cachedAabb!!.move(delta)
+        }
+    }
+
+    fun tickServer(level: ServerLevel) {
+        val voxels = level.getBlockCollisions(null, aabb).flatMap { it.bounds().betweenClosedBlocks() }
+        val entities = level.getEntities(null, aabb)
+
+        fun spawnDust(pos: BlockPos) {
+            level.sendParticles(
+                ParticleTypes.DUST_PLUME,
+                pos.x + 0.5,
+                pos.y + 0.5,
+                pos.z + 0.5,
+                5, // count
+                0.25, 0.25, 0.25, // spread
+                0.01 // speed
+            )
+        }
+
+        fun spawnSmoke(pos: BlockPos) {
+            level.sendParticles(
+                ParticleTypes.LARGE_SMOKE,
+                pos.x + 0.5,
+                pos.y + 0.5,
+                pos.z + 0.5,
+                5, // count
+                0.25, 0.25, 0.25, // spread
+                0.01 // speed
+            )
+        }
+
+        fun spawnBlockItem(pos: BlockPos, block: BlockState) {
+            val stack = block.block.getCloneItemStack(
+                level, pos, block
+            )
+            val item = ItemEntity(
+                level,
+                pos.x + 0.5, pos.y + 0.5, pos.z + 0.5,
+                stack
+            )
+            level.addFreshEntity(item)
+        }
+
+        if (voxels.any()) {
+            for (blockPair in blocks) {
+                val (originalBlockPos, block) = blockPair
+                val movedBlockPos = originalBlockPos.offset(
+                    pos.toVec3i() - origin.toVec3i()
+                )
+                val travelledFactor = 1 - (1f / originalBlockPos.distManhattan(movedBlockPos))
+                val worldBlock = level.getBlockState(movedBlockPos)
+                if (worldBlock.isAir || worldBlock.isEmpty) continue
+                val hardness = block.block.defaultBlockState().getDestroySpeed(
+                    level, movedBlockPos
+                ) * travelledFactor
+                val worldBlockHardness = worldBlock.block.defaultBlockState().getDestroySpeed(
+                    level, movedBlockPos
+                ) * travelledFactor
+                if (hardness > 3f) {
+                    // spawn explosion
+                    level.explode(null, movedBlockPos.x + 0.5, movedBlockPos.y + 0.5, movedBlockPos.z + 0.5, hardness / 2f, Level.ExplosionInteraction.BLOCK)
+                    blocks.remove(blockPair)
+                    invalidate()
+                }
+                else if (worldBlockHardness >= 0f && hardness >= worldBlockHardness) {
+                    level.destroyBlock(movedBlockPos, true)
+                    blocks.remove(blockPair)
+                    // spawn smoke
+                    spawnSmoke(movedBlockPos)
+                    invalidate()
+                }
+                else {
+                    blocks.remove(blockPair)
+                    if (Random.nextBoolean()) {
+                        spawnDust(movedBlockPos)
+                        spawnBlockItem(movedBlockPos, block)
+                    }
+                    else {
+                        spawnSmoke(movedBlockPos)
+                        level.setBlockAndUpdate(
+                            movedBlockPos.above(), block
+                        )
+                    }
+                    invalidate()
+                }
+            }
+        }
+        for (entity in entities) {
+            val epos = entity.blockPosition()
+            val closest = blocks.minByOrNull {
+                val movedPos = it.first.offset(pos.toVec3i() - origin.toVec3i())
+                movedPos.distManhattan(epos)
+            } ?: continue
+            if (entity.boundingBox.inflate(2.0).contains(closest.first.toVec3()).not()) continue
+            val (bpos, bstate) = closest
+            val movedPos = bpos.offset(pos.toVec3i() - origin.toVec3i())
+            val travelledFactor = 1 - (1f / bpos.distManhattan(movedPos))
+            val hardness = bstate.block.defaultBlockState().getDestroySpeed(
+                level, bpos
+            )
+            entity.hurt(
+                level.damageSources().fall(),
+                (if (hardness < 0f) 1f else hardness / 2f) * travelledFactor
+            )
+        }
     }
 
     fun close() = vbo?.close()

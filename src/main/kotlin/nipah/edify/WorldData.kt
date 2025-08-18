@@ -2,6 +2,7 @@ package nipah.edify
 
 import net.minecraft.core.BlockPos
 import net.minecraft.world.level.ChunkPos
+import net.minecraft.world.level.block.LiquidBlock
 import net.minecraft.world.level.chunk.LevelChunk
 import nipah.edify.client.render.createBatch
 import nipah.edify.utils.findNeighbor
@@ -69,7 +70,7 @@ object WorldData {
             if (longPos in visited) continue
             val chunk = chunks.at(pos) ?: continue
             val block = chunk.getBlockState(pos)
-            if (block.isAir || block.isEmpty) continue
+            if (block.isAir || block.isEmpty || block.block is LiquidBlock) continue
             val inFoundation = inFoundation(pos)
             visited.add(longPos)
             if (inFoundation.not()) {

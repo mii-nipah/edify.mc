@@ -1,11 +1,12 @@
 package nipah.edify.client.render
 
 import net.minecraft.core.BlockPos
-import net.minecraft.world.level.BlockAndTintGetter
+import net.minecraft.world.level.Level
+import nipah.edify.utils.toCopyOnWriteArrayList
 import org.joml.Vector3f
 
 fun createBatch(
-    level: BlockAndTintGetter,
+    level: Level,
     blocks: List<BlockPos>,
     origin: BlockPos = blocks.first(),
 ) {
@@ -20,7 +21,7 @@ fun createBatch(
     ).normalize().mul(-0.1f)
     velocity.x *= -1f
     velocity.z *= -1f
-    velocity.y = -0.3f
+    velocity.y = -0.15f
     val batch = FallingBatch(
         origin,
         null,
@@ -28,7 +29,8 @@ fun createBatch(
         vel = velocity,
         blocks = blocks.map { pos ->
             pos to level.getBlockState(pos)
-        }
+        }.toCopyOnWriteArrayList(),
+        levelKey = level.dimension()
     )
     BatchRenderer.add(batch)
 }
