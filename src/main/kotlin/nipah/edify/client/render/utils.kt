@@ -20,6 +20,7 @@ fun createBatch(
     ).normalize().mul(-0.1f)
     velocity.x *= -1f
     velocity.z *= -1f
+    velocity.y = -0.3f
     val batch = FallingBatch(
         origin,
         null,
