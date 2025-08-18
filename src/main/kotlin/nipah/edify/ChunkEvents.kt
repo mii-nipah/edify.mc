@@ -15,7 +15,7 @@ object ChunkEvents {
     @SubscribeEvent
     fun onChunkLoad(e: ChunkEvent.Load) {
         if (e.level.isClientSide) return
-        TickScheduler.schedule(10) {
+        TickScheduler.scheduleServer(10) {
             val pos = e.chunk.pos
             val chunk = e.level.chunkSource.getChunkNow(pos.x, pos.z)
             if (chunk != null) {
