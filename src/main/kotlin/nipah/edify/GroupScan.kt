@@ -6,14 +6,12 @@ import kotlinx.coroutines.launch
 import net.minecraft.core.BlockPos
 import net.minecraft.world.level.block.LiquidBlock
 import nipah.edify.WorldData.chunkData
-import nipah.edify.utils.TickScheduler
-import nipah.edify.utils.findNeighbor
-import nipah.edify.utils.forEachNeighbor
-import nipah.edify.utils.worldToLocalPos
+import nipah.edify.utils.*
 
 class GroupScan(
     val chunks: ChunkAccess,
     private val limit: Int = 100_000,
+    private val scanPerTick: Int = 100_000,
 ) {
     private val toVisit = ArrayDeque<BlockPos>()
     private val visited = mutableSetOf<Long>()
@@ -58,6 +56,7 @@ class GroupScan(
         }
 
         var iter = 0
+        var tickIter = 0
 
         val metaGroup = mutableSetOf<Long>()
 
@@ -66,6 +65,12 @@ class GroupScan(
             if (iter >= limit) {
                 return@launch
             }
+            tickIter++
+            if (tickIter > scanPerTick) {
+                tickIter = 0
+                nextServerTick()
+            }
+
             val pos = toVisit.removeFirst()
             val longPos = pos.asLong()
             if (longPos in visited) continue
