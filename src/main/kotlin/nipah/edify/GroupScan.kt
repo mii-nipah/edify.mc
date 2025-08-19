@@ -29,18 +29,20 @@ class GroupScan(
     suspend fun scan(seed: List<BlockPos>): List<BlockPos>? {
         currentJob?.cancel()
         clear()
-        toVisit.addAll(seed)
-        currentJob = mapGroup()
-        try {
-            currentJob?.join()
-            return group.map { BlockPos.of(it) }
+        for (pos in seed) {
+            toVisit.add(pos)
+            currentJob = mapGroup()
+            try {
+                currentJob?.join()
+            }
+            catch (_: Throwable) {
+                return null
+            }
+            finally {
+                currentJob = null
+            }
         }
-        catch (e: Throwable) {
-            return null
-        }
-        finally {
-            currentJob = null
-        }
+        return group.map { BlockPos.of(it) }
     }
 
     private fun mapGroup() = TickScheduler.serverScope.launch {
