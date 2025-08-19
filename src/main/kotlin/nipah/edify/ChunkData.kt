@@ -2,6 +2,7 @@ package nipah.edify
 
 import net.minecraft.world.level.ChunkPos
 import net.minecraft.world.level.block.Blocks
+import net.minecraft.world.level.block.LiquidBlock
 import net.minecraft.world.level.chunk.LevelChunk
 import nipah.edify.utils.*
 
@@ -30,6 +31,9 @@ class ChunkData(val chunkPos: ChunkPos, chunk: LevelChunk) {
         chunk.forEachBlock { pos ->
             val wpos = chunk.localToWorldPos(pos)
             val block = chunk.getBlockState(wpos)
+            if (block.isAir || block.block is LiquidBlock) {
+                return@forEachBlock
+            }
             if (block.isOf(Blocks.BEDROCK)) {
                 foundation[pos.x, safeY(pos.y), pos.z] = 1
             }
