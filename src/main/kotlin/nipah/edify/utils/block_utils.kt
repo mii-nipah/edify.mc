@@ -44,3 +44,9 @@ inline fun BlockPos.findNeighbor(func: (BlockPos) -> Boolean): BlockPos? {
     if (res) return this.below()
     return null
 }
+
+fun BlockPos.collectNeighbors(): MutableList<BlockPos> {
+    val neighbors = mutableListOf<BlockPos>()
+    this.forEachNeighbor { neighbors.add(it) }
+    return neighbors
+}
