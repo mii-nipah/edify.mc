@@ -2,6 +2,8 @@ package nipah.edify.client.render
 
 import com.mojang.blaze3d.vertex.*
 import net.minecraft.client.Minecraft
+import net.minecraft.client.renderer.ItemBlockRenderTypes
+import net.minecraft.client.renderer.RenderType
 import net.minecraft.client.renderer.block.BlockRenderDispatcher
 import net.minecraft.core.BlockPos
 import net.minecraft.util.RandomSource
@@ -9,14 +11,36 @@ import net.minecraft.world.level.BlockAndTintGetter
 import net.minecraft.world.level.block.RenderShape
 import net.minecraft.world.level.block.state.BlockState
 
+fun isNonRenderableMesh(
+    state: BlockState,
+): Boolean {
+    if (state.renderShape != RenderShape.MODEL) return true
+    val rt = ItemBlockRenderTypes.getChunkRenderType(state)
+    return rt == RenderType.translucent()
+}
+
 fun buildSolidMesh(
     level: BlockAndTintGetter,
-    blocks: List<BlockPos>,
-    origin: BlockPos = blocks.first(),
-): VertexBuffer {
+    blocks: List<Pair<BlockPos, BlockState>>,
+    origin: BlockPos = blocks.first().first,
+): Pair<VertexBuffer, List<Pair<BlockPos, BlockState>>>? {
+    val nonRenderable = mutableListOf<Pair<BlockPos, BlockState>>(
+        *blocks.mapNotNull {
+            val state = it.second
+            if (isNonRenderableMesh(state)) it
+            else if (state.renderShape != RenderShape.MODEL) it
+            else null
+        }.toTypedArray()
+    )
+    if (nonRenderable.size == blocks.size) {
+        return null
+    }
+    val nonRenderableSet = nonRenderable.map { it.first }.toSet()
+
     val mc = Minecraft.getInstance()
     val dispatcher: BlockRenderDispatcher = mc.blockRenderer
     val pose = PoseStack()
+
 
     // The buffer must match the RenderType's vertex format for solid blocks
     val bBuf = ByteBufferBuilder(64_000)
@@ -24,11 +48,8 @@ fun buildSolidMesh(
 
     val random: RandomSource = RandomSource.create(42L)
 
-    for (pos in blocks) {
-        val state: BlockState = level.getBlockState(pos)
-        if (state.renderShape != RenderShape.MODEL) continue
-        // keep minimal: only draw things that belong to the solid layer
-        if (!state.canOcclude()) continue
+    for ((pos, state) in blocks) {
+        if (pos in nonRenderableSet) continue
 
         val baked = dispatcher.getBlockModel(state)
         pose.pushPose()
@@ -43,11 +64,10 @@ fun buildSolidMesh(
         pose.popPose()
     }
 
-    val rendered = buf.build() ?: error("Empty mesh")
+    val rendered = buf.build() ?: return null
     val vbo = VertexBuffer(VertexBuffer.Usage.STATIC)
     vbo.bind()
     vbo.upload(rendered)
-    vbo.close()
     VertexBuffer.unbind()
-    return vbo
+    return vbo to nonRenderable
 }

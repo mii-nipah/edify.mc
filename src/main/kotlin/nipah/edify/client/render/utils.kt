@@ -24,7 +24,6 @@ fun createBatch(
     velocity.y = -0.15f
     val batch = FallingBatch(
         origin,
-        null,
         pos = Vector3f(origin.x.toFloat(), origin.y.toFloat(), origin.z.toFloat()),
         vel = velocity,
         blocks = blocks.map { pos ->
