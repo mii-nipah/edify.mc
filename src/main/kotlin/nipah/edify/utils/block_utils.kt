@@ -1,8 +1,13 @@
 package nipah.edify.utils
 
 import net.minecraft.core.BlockPos
+import net.minecraft.core.Direction
+import net.minecraft.tags.BlockTags
 import net.minecraft.tags.TagKey
+import net.minecraft.world.level.LevelReader
 import net.minecraft.world.level.block.Block
+import net.minecraft.world.level.block.Blocks
+import net.minecraft.world.level.block.SnowLayerBlock
 import net.minecraft.world.level.block.state.BlockState
 
 fun BlockState.isOf(block: Block): Boolean {
@@ -49,4 +54,26 @@ fun BlockPos.collectNeighbors(): MutableList<BlockPos> {
     val neighbors = mutableListOf<BlockPos>()
     this.forEachNeighbor { neighbors.add(it) }
     return neighbors
+}
+
+fun BlockState.holdsNoHeight(level: LevelReader, pos: BlockPos): Boolean {
+    val state = this
+
+    if (state.isAir) return true
+    if (state.canBeReplaced()) return true
+
+    // Top face not a full supporting face → no support (torches, buttons, fences, walls, panes, etc.)
+    if (!Block.isFaceFull(state.getBlockSupportShape(level, pos), Direction.UP)) return true
+
+    // Your “weak support” policy (tune as you like)
+    if (state.`is`(BlockTags.LEAVES)) return true
+    if (state.`is`(BlockTags.RAILS)) return true
+    if (state.`is`(BlockTags.WOOL_CARPETS)) return true
+    if (state.`is`(BlockTags.FLOWERS) || state.`is`(BlockTags.SAPLINGS)) return true
+    if (state.`is`(Blocks.COBWEB)) return true
+    if (state.`is`(Blocks.SCAFFOLDING)) return true
+    if (!state.fluidState.isEmpty) return true
+    if (state.block is SnowLayerBlock && state.getValue(SnowLayerBlock.LAYERS) < 8) return true
+
+    return false
 }
