@@ -33,7 +33,10 @@ class FallingBatch(
 ) {
     fun invalidate() {
         cachedAabb = null
-        cachedVbo?.close()
+        val existingVbo = cachedVbo
+        RenderSystem.recordRenderCall {
+            existingVbo?.close()
+        }
         cachedVbo = null
     }
 
