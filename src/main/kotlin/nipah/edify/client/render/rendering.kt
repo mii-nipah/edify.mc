@@ -89,10 +89,8 @@ object ClientHooks {
                 else {
                     val vbo = b.vbo ?: return@withPush
 
-                    // GL state for position+color triangles
                     RenderSystem.enableDepthTest()
-                    RenderSystem.disableBlend()     // (enable if you want alpha blending)
-                    RenderSystem.disableCull()      // show regardless of winding while debugging
+                    RenderSystem.disableBlend()
 
                     val view = Matrix4f(e.modelViewMatrix)
                         .translate(

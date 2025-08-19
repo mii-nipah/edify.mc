@@ -10,6 +10,8 @@ import net.minecraft.util.RandomSource
 import net.minecraft.world.level.BlockAndTintGetter
 import net.minecraft.world.level.block.RenderShape
 import net.minecraft.world.level.block.state.BlockState
+import nipah.edify.types.WorldBlock
+import nipah.edify.types.toBlockPosSet
 
 fun isNonRenderableMesh(
     state: BlockState,
@@ -21,12 +23,12 @@ fun isNonRenderableMesh(
 
 fun buildSolidMesh(
     level: BlockAndTintGetter,
-    blocks: List<Pair<BlockPos, BlockState>>,
-    origin: BlockPos = blocks.first().first,
-): Pair<VertexBuffer, List<Pair<BlockPos, BlockState>>>? {
-    val nonRenderable = mutableListOf<Pair<BlockPos, BlockState>>(
+    blocks: List<WorldBlock>,
+    origin: BlockPos = blocks.first().pos,
+): Pair<VertexBuffer, List<WorldBlock>>? {
+    val nonRenderable = mutableListOf<WorldBlock>(
         *blocks.mapNotNull {
-            val state = it.second
+            val state = it.state
             if (isNonRenderableMesh(state)) it
             else if (state.renderShape != RenderShape.MODEL) it
             else null
@@ -35,7 +37,7 @@ fun buildSolidMesh(
     if (nonRenderable.size == blocks.size) {
         return null
     }
-    val nonRenderableSet = nonRenderable.map { it.first }.toSet()
+    val nonRenderableSet = nonRenderable.toBlockPosSet()
 
     val mc = Minecraft.getInstance()
     val dispatcher: BlockRenderDispatcher = mc.blockRenderer

@@ -13,6 +13,7 @@ import net.minecraft.world.entity.item.ItemEntity
 import net.minecraft.world.level.Level
 import net.minecraft.world.level.block.state.BlockState
 import net.minecraft.world.phys.AABB
+import nipah.edify.types.WorldBlock
 import nipah.edify.utils.betweenClosedBlocks
 import nipah.edify.utils.minus
 import nipah.edify.utils.toVec3
@@ -27,7 +28,7 @@ class FallingBatch(
     var pos: Vector3f,
     var vel: Vector3f = Vector3f(0f, -0.1f, 0f),
     val travelled: Float = 0f,
-    val blocks: CopyOnWriteArrayList<Pair<BlockPos, BlockState>>,
+    val blocks: CopyOnWriteArrayList<WorldBlock>,
     val levelKey: ResourceKey<Level>,
 ) {
     fun invalidate() {
@@ -37,7 +38,7 @@ class FallingBatch(
     }
 
     private var cachedVbo: VertexBuffer? = null
-    private var cachedNonRenderable: List<Pair<BlockPos, BlockState>>? = null
+    private var cachedNonRenderable: List<WorldBlock>? = null
     val vbo: VertexBuffer?
         get() {
             if (blocks.isEmpty()) return null
@@ -54,10 +55,10 @@ class FallingBatch(
                 cachedNonRenderable = it.second
             }.first
         }
-    val nonRenderable: List<Pair<BlockPos, BlockState>>
+    val nonRenderable: List<WorldBlock>
         get() {
             if (cachedNonRenderable != null) return cachedNonRenderable!!
-            val nonRenderable = blocks.filter { isNonRenderableMesh(it.second) }
+            val nonRenderable = blocks.filter { isNonRenderableMesh(it.state) }
             return nonRenderable.also {
                 cachedNonRenderable = it
             }
@@ -67,12 +68,12 @@ class FallingBatch(
     val aabb: AABB
         get() {
             if (cachedAabb != null) return cachedAabb!!
-            val minX = blocks.minOfOrNull { it.first.x } ?: origin.x
-            val minY = blocks.minOfOrNull { it.first.y } ?: origin.y
-            val minZ = blocks.minOfOrNull { it.first.z } ?: origin.z
-            val maxX = blocks.maxOfOrNull { it.first.x } ?: origin.x
-            val maxY = blocks.maxOfOrNull { it.first.y } ?: origin.y
-            val maxZ = blocks.maxOfOrNull { it.first.z } ?: origin.z
+            val minX = blocks.minOfOrNull { it.pos.x } ?: origin.x
+            val minY = blocks.minOfOrNull { it.pos.y } ?: origin.y
+            val minZ = blocks.minOfOrNull { it.pos.z } ?: origin.z
+            val maxX = blocks.maxOfOrNull { it.pos.x } ?: origin.x
+            val maxY = blocks.maxOfOrNull { it.pos.y } ?: origin.y
+            val maxZ = blocks.maxOfOrNull { it.pos.z } ?: origin.z
 
             val minPos = BlockPos(minX, minY, minZ)
             val maxPos = BlockPos(maxX, maxY, maxZ)
@@ -179,10 +180,10 @@ class FallingBatch(
         for (entity in entities) {
             val epos = entity.blockPosition()
             val closest = blocks.minByOrNull {
-                val movedPos = it.first.offset(pos.toVec3i() - origin.toVec3i())
+                val movedPos = it.pos.offset(pos.toVec3i() - origin.toVec3i())
                 movedPos.distManhattan(epos)
             } ?: continue
-            if (entity.boundingBox.inflate(2.0).contains(closest.first.toVec3()).not()) continue
+            if (entity.boundingBox.inflate(2.0).contains(closest.pos.toVec3()).not()) continue
             val (bpos, bstate) = closest
             val movedPos = bpos.offset(pos.toVec3i() - origin.toVec3i())
             val travelledFactor = 1 - (1f / bpos.distManhattan(movedPos))

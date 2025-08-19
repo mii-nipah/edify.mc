@@ -2,6 +2,7 @@ package nipah.edify.client.render
 
 import net.minecraft.core.BlockPos
 import net.minecraft.world.level.Level
+import nipah.edify.types.to
 import nipah.edify.utils.toCopyOnWriteArrayList
 import org.joml.Vector3f
 
