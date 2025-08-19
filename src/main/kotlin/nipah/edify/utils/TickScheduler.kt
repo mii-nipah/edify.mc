@@ -9,15 +9,17 @@ import net.minecraft.server.MinecraftServer
 import net.neoforged.bus.api.SubscribeEvent
 import net.neoforged.neoforge.client.event.ClientTickEvent
 import net.neoforged.neoforge.event.tick.ServerTickEvent
+import java.util.*
+import java.util.concurrent.ConcurrentLinkedDeque
 import java.util.concurrent.CopyOnWriteArrayList
 import kotlin.coroutines.CoroutineContext
 
 object TickScheduler {
     private val clientTasks = CopyOnWriteArrayList<Task<Minecraft>>()
-    private val clientNextTickTasks = CopyOnWriteArrayList<(Minecraft) -> Unit>()
+    private val clientNextTickTasks = ConcurrentLinkedDeque<(Minecraft) -> Unit>()
 
     private val serverTasks = CopyOnWriteArrayList<Task<MinecraftServer>>()
-    private val serverNextTickTasks = CopyOnWriteArrayList<(MinecraftServer) -> Unit>()
+    private val serverNextTickTasks = ConcurrentLinkedDeque<(MinecraftServer) -> Unit>()
 
     fun scheduleServer(ticks: Int, action: (MinecraftServer) -> Unit) {
         if (ticks == 1) {
@@ -84,13 +86,14 @@ object TickScheduler {
     }
 
     private fun <T> processNextTickTasks(
-        nextTickTasks: MutableList<(T) -> Unit>,
+        nextTickTasks: Deque<(T) -> Unit>,
         pass: T,
     ) {
-        for (task in nextTickTasks) {
-            task(pass)
+        var next = nextTickTasks.poll()
+        while (next != null) {
+            next(pass)
+            next = nextTickTasks.poll()
         }
-        nextTickTasks.clear()
     }
 
     @SubscribeEvent
