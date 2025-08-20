@@ -2,6 +2,7 @@ package nipah.edify.client.render
 
 import net.minecraft.core.BlockPos
 import net.minecraft.world.level.Level
+import nipah.edify.types.BlockWeight
 import nipah.edify.types.to
 import nipah.edify.utils.toCopyOnWriteArrayList
 import nipah.edify.utils.toVec3f
@@ -15,9 +16,15 @@ fun createBatch(
     origin: BlockPos = blocks.first(),
 ) {
     if (blocks.isEmpty()) return
-    val centerOfMass = blocks.fold(Vector3f(0f, 0f, 0f)) { acc, pos ->
-        acc.add(pos.x.toFloat(), pos.y.toFloat(), pos.z.toFloat())
-    }.div(blocks.size.toFloat())
+    val computedBlocks = blocks.map { pos ->
+        pos to level.getBlockState(pos)
+    }
+    var totalWeight = 0f
+    val centerOfMass = computedBlocks.fold(Vector3f(0f, 0f, 0f)) { acc, (pos, block) ->
+        val weight = BlockWeight.of(block).value
+        totalWeight += weight
+        acc.add(pos.x.toFloat() * weight, pos.y.toFloat() * weight, pos.z.toFloat() * weight)
+    }.div(totalWeight)
 
     val lowestFootPos = blocks.minByOrNull { it.y } ?: origin
 
@@ -35,11 +42,10 @@ fun createBatch(
         pos = Vector3f(origin.x.toFloat(), origin.y.toFloat(), origin.z.toFloat()),
         vel = velocity,
         centerOfMass = centerOfMass,
+        totalWeight = totalWeight,
         foot = lowestFootPos.toVec3f(),
         rotation = Quaternionf(),
-        blocks = blocks.map { pos ->
-            pos to level.getBlockState(pos)
-        }.toCopyOnWriteArrayList(),
+        blocks = computedBlocks.toCopyOnWriteArrayList(),
         levelKey = level.dimension()
     )
     BatchRenderer.add(batch)

@@ -12,7 +12,7 @@ value class BlockWeight(val value: Float) {
                 return BlockWeight(0f)
             }
             if (state.isHeavy()) {
-                return BlockWeight(5f)
+                return BlockWeight(10f)
             }
             if (state.isDirtLike()) {
                 return BlockWeight(2.5f)
@@ -21,16 +21,16 @@ value class BlockWeight(val value: Float) {
                 return BlockWeight(0.5f)
             }
             if (state.isLogLike()) {
-                return BlockWeight(2f)
+                return BlockWeight(1.5f)
             }
             if (state.isPlankLike()) {
                 return BlockWeight(1f)
             }
             if (state.isStoneLike()) {
-                return BlockWeight(3f)
+                return BlockWeight(5f)
             }
             if (state.isExplosive()) {
-                return BlockWeight(1.5f)
+                return BlockWeight(0.7f)
             }
             if (state.isAir) {
                 return BlockWeight(0f)

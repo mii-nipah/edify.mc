@@ -32,6 +32,7 @@ class FallingBatch(
     val centerOfMass: Vector3f,
     var rotation: Quaternionf,
     var vel: Vector3f = Vector3f(0f, -0.1f, 0f),
+    var totalWeight: Float,
     val gravity: Float = vel.y.absoluteValue,
     val travelled: Float = 0f,
     val blocks: CopyOnWriteArrayList<WorldBlock>,
@@ -168,6 +169,7 @@ class FallingBatch(
 
         var moveUp = 0f
         var moves = 0
+        var collisionWeight = 0f
         if (voxels.any()) {
             for (blockPair in blocks) {
                 val (originalBlockPos, block) = blockPair
@@ -180,10 +182,12 @@ class FallingBatch(
 
                 val blockStr = BlockStrength.of(block)
                 val worldBlockStr = BlockStrength.of(worldBlock)
+                val blockW = BlockWeight.of(block)
 
                 if (Random.nextChance(blockStr.willPut)) {
                     level.setBlockAndUpdate(movedBlockPos.above(), block)
                     blocks.remove(blockPair)
+                    totalWeight -= blockW.value
                     level.sendParticlesAt(
                         movedBlockPos,
                         ParticleTypes.DUST_PLUME
@@ -191,6 +195,7 @@ class FallingBatch(
                     invalidate()
                     moveUp += 0.5f
                     moves++
+                    collisionWeight += blockW.value
                     continue
                 }
 
@@ -199,11 +204,13 @@ class FallingBatch(
                 if (Random.nextChance(blockStr.willBreak * (1f - worldBlockStr.willBreak))) {
                     spawnBlockItem(movedBlockPos, block)
                     blocks.remove(blockPair)
+                    totalWeight -= blockW.value
                     invalidate()
                     somethingBreaking = true
                     selfBreaking = true
                     moveUp += 0.2f
                     moves++
+                    collisionWeight += blockW.value
                 }
                 if (worldBlockStr !is BlockStrength.Unbreakable) {
                     if (blockStr.willBreak < worldBlockStr.willBreak
@@ -213,14 +220,15 @@ class FallingBatch(
                         somethingBreaking = true
                         moveUp += 0.2f
                         moves++
+                        collisionWeight += blockW.value
                     }
                     if (Random.nextChance(worldBlockStr.willExplode)) {
-                        val blockW = BlockWeight.of(block)
                         val intensity = blockStr.intensity(blockW)
                         // spawn explosion
                         level.explode(null, movedBlockPos.x + 0.5, movedBlockPos.y + 0.5, movedBlockPos.z + 0.5, intensity, Level.ExplosionInteraction.BLOCK)
                         moveUp += 0.1f
                         moves++
+                        collisionWeight += blockW.value
                     }
                 }
                 if (somethingBreaking) {
@@ -239,14 +247,18 @@ class FallingBatch(
                     // spawn explosion
                     level.explode(null, movedBlockPos.x + 0.5, movedBlockPos.y + 0.5, movedBlockPos.z + 0.5, intensity, Level.ExplosionInteraction.BLOCK)
                     blocks.remove(blockPair)
+                    totalWeight -= blockW.value
                     invalidate()
                     moveUp += 0.5f
                     moves++
+                    collisionWeight += blockW.value
                     continue
                 }
             }
         }
         moveUp /= moves.coerceAtLeast(1)
+        val collisionWeightPerc = collisionWeight / totalWeight
+        moveUp *= collisionWeightPerc.coerceAtMost(1f)
         vel.x += -vel.x * (0.1f * moveUp)
         vel.z += -vel.z * (0.1f * moveUp)
         vel.y += moveUp
