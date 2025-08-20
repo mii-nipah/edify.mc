@@ -1,5 +1,7 @@
 package nipah.edify
 
+import it.unimi.dsi.fastutil.longs.LongArrayFIFOQueue
+import it.unimi.dsi.fastutil.longs.LongOpenHashSet
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -13,9 +15,10 @@ class GroupScan(
     private val limit: Int = 100_000,
     private val scanPerTick: Int = 100_000,
 ) {
-    private val toVisit = ArrayDeque<BlockPos>()
-    private val visited = mutableSetOf<Long>()
-    private val group = mutableSetOf<Long>()
+    private val toVisit = LongArrayFIFOQueue(50_000)
+    private val visited = LongOpenHashSet(1_000_000)
+    private val group = LongOpenHashSet(300_000)
+    private val metaGroup = LongOpenHashSet(300_000)
 
     fun clear() {
         toVisit.clear()
@@ -25,10 +28,11 @@ class GroupScan(
 
     private var currentJob: Job? = null
     suspend fun scan(seed: List<BlockPos>): List<BlockPos>? {
+        val seed = if (seed.size > 1000) seed.takeRandomNPercentile(0.01f) else seed
         currentJob?.cancel()
         clear()
         for (pos in seed) {
-            toVisit.add(pos)
+            toVisit.enqueue(pos.asLong())
             currentJob = mapGroup()
             try {
                 currentJob?.join()
@@ -49,31 +53,27 @@ class GroupScan(
             val lpos = chunk.worldToLocalPos(pos)
             val cdata = chunkData[chunk.pos] ?: return false
             return cdata.foundationAt(lpos.x, lpos.y, lpos.z)
-                    || lpos.findNeighbor { npos ->
-                val neighborData = chunkData[chunk.pos] ?: return@findNeighbor false
-                neighborData.foundationAt(npos.x, npos.y, npos.z)
-            } != null
         }
 
         var iter = 0
-        var tickIter = 0
+        var tickIter = toVisit.size()
 
-        val metaGroup = mutableSetOf<Long>()
+        metaGroup.clear()
 
+        val pos = BlockPos.MutableBlockPos()
         while (toVisit.isNotEmpty() && isActive) {
             iter++
             if (iter >= limit) {
                 return@launch
             }
-            tickIter++
             if (tickIter > scanPerTick) {
                 tickIter = 0
                 nextServerTick()
             }
 
-            val pos = toVisit.removeFirst()
-            val longPos = pos.asLong()
+            val longPos = toVisit.dequeueLong()
             if (longPos in visited) continue
+            pos.set(longPos)
             val chunk = chunks.at(pos) ?: continue
             val block = chunk.getBlockState(pos)
             if (block.isAir || block.isEmpty || block.block is LiquidBlock) continue
@@ -83,12 +83,14 @@ class GroupScan(
                 metaGroup.add(longPos)
             }
             else {
+                val xpos = pos
                 return@launch
             }
 
-            pos.forEachNeighbor { pos ->
-                if (pos.asLong() in visited) return@forEachNeighbor
-                toVisit.add(pos)
+            pos.forEachNeighborNoAlloc { pos ->
+                val longPos = pos.asLong()
+                if (longPos in visited) return@forEachNeighborNoAlloc
+                toVisit.enqueue(longPos)
             }
         }
         group.addAll(metaGroup)

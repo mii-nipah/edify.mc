@@ -18,6 +18,7 @@ import net.neoforged.fml.common.EventBusSubscriber
 import net.neoforged.neoforge.client.event.ClientTickEvent
 import net.neoforged.neoforge.client.event.RenderLevelStageEvent
 import net.neoforged.neoforge.client.model.data.ModelData
+import nipah.edify.gizmos.Gizmos
 import nipah.edify.utils.withPush
 import org.joml.Matrix4f
 
@@ -77,13 +78,21 @@ object ClientHooks {
 
         pose.pushPose()
         for (b in BatchRenderer.batches) {
+            Gizmos.box(
+                aabb = b.aabb,
+                color = 0xff00ff00.toInt(),
+            )
+
             pose.withPush {
                 // camera-space placement
                 pose.translate(b.pos.x - cam.x, b.pos.y - cam.y, b.pos.z - cam.z)
 
                 if (b.blocks.size < 500) {
-                    for ((worldPos, state) in b.blocks) {
-                        drawBlock(b.origin, worldPos, state)
+                    pose.withPush {
+                        pose.mulPose(b.rotation)
+                        for ((worldPos, state) in b.blocks) {
+                            drawBlock(b.origin, worldPos, state)
+                        }
                     }
                 }
                 else {
@@ -98,6 +107,7 @@ object ClientHooks {
                             (b.pos.y - cam.y).toFloat(),
                             (b.pos.z - cam.z).toFloat()
                         )
+                        .rotate(b.rotation)
 
                     mc.gameRenderer.lightTexture().turnOnLightLayer()
                     RenderSystem.setShaderTexture(0, TextureAtlas.LOCATION_BLOCKS)

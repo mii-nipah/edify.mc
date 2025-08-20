@@ -12,20 +12,15 @@ class IntArray3d(
 ): INBTSerializable<CompoundTag> {
     private val data: IntArray = IntArray(sizeX * sizeY * sizeZ) { 0 }
 
-    private fun index(x: Int, y: Int, z: Int): Int {
-        require(x in 0 until sizeX && y in 0 until sizeY && z in 0 until sizeZ) {
-            "Index out of bounds ($x, $y, $z)"
-        }
+    private inline fun index(x: Int, y: Int, z: Int): Int {
         return (z * sizeY + y) * sizeX + x
     }
 
     operator fun get(index3d: Int): Int {
-        @Suppress("UNCHECKED_CAST")
         return data[index3d]
     }
 
     operator fun get(x: Int, y: Int, z: Int): Int {
-        @Suppress("UNCHECKED_CAST")
         return data[index(x, y, z)]
     }
 

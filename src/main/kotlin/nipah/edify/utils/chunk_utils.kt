@@ -33,6 +33,12 @@ fun LevelChunk.localToWorldPos(local: BlockPos): BlockPos {
     return BlockPos(baseX + local.x, local.y, baseZ + local.z)
 }
 
+fun LevelChunk.localToWorldPosNoAlloc(local: BlockPos, into: BlockPos.MutableBlockPos) {
+    val baseX = this.pos.x shl 4 // chunk.x * 16
+    val baseZ = this.pos.z shl 4 // chunk.z * 16
+    into.set(baseX + local.x, local.y, baseZ + local.z)
+}
+
 fun LevelChunk.localToWorldPos(localX: Int, y: Int, localZ: Int): BlockPos {
     val baseX = this.pos.x shl 4 // chunk.x * 16
     val baseZ = this.pos.z shl 4 // chunk.z * 16

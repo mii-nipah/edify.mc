@@ -34,6 +34,29 @@ inline fun BlockPos.forEachNeighbor(func: (BlockPos) -> Unit) {
     func(this.below())
 }
 
+inline fun BlockPos.forEachNeighborNoAlloc(func: (BlockPos) -> Unit) {
+    val pos = asLong()
+    val north = BlockPos.offset(pos, Direction.NORTH)
+    val south = BlockPos.offset(pos, Direction.SOUTH)
+    val east = BlockPos.offset(pos, Direction.EAST)
+    val west = BlockPos.offset(pos, Direction.WEST)
+    val above = BlockPos.offset(pos, Direction.UP)
+    val below = BlockPos.offset(pos, Direction.DOWN)
+    val mutPos = BlockPos.MutableBlockPos()
+    mutPos.set(north)
+    func(mutPos)
+    mutPos.set(south)
+    func(mutPos)
+    mutPos.set(east)
+    func(mutPos)
+    mutPos.set(west)
+    func(mutPos)
+    mutPos.set(above)
+    func(mutPos)
+    mutPos.set(below)
+    func(mutPos)
+}
+
 inline fun BlockPos.findNeighbor(func: (BlockPos) -> Boolean): BlockPos? {
     var res = func(this.north())
     if (res) return this.north()
@@ -47,6 +70,36 @@ inline fun BlockPos.findNeighbor(func: (BlockPos) -> Boolean): BlockPos? {
     if (res) return this.above()
     res = func(this.below())
     if (res) return this.below()
+    return null
+}
+
+inline fun BlockPos.findNeighborNoAlloc(func: (BlockPos) -> Boolean): BlockPos? {
+    val pos = asLong()
+    val mutPos = BlockPos.MutableBlockPos()
+    val north = BlockPos.offset(pos, Direction.NORTH)
+    mutPos.set(north)
+    var res = func(mutPos)
+    if (res) return mutPos
+    val south = BlockPos.offset(pos, Direction.SOUTH)
+    mutPos.set(south)
+    res = func(mutPos)
+    if (res) return mutPos
+    val east = BlockPos.offset(pos, Direction.EAST)
+    mutPos.set(east)
+    res = func(mutPos)
+    if (res) return mutPos
+    val west = BlockPos.offset(pos, Direction.WEST)
+    mutPos.set(west)
+    res = func(mutPos)
+    if (res) return mutPos
+    val above = BlockPos.offset(pos, Direction.UP)
+    mutPos.set(above)
+    res = func(mutPos)
+    if (res) return mutPos
+    val below = BlockPos.offset(pos, Direction.DOWN)
+    mutPos.set(below)
+    res = func(mutPos)
+    if (res) return mutPos
     return null
 }
 

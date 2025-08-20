@@ -82,6 +82,8 @@ object ChunkEvents {
         val chunk = e.level.getChunk(e.pos).let {
             e.level.chunkSource.getChunkNow(it.pos.x, it.pos.z)
         } ?: return
+        val state = e.state
+        val chunkState = chunk.getBlockState(e.pos)
         queued.add(Triple(chunk, e.pos, BlockChangeKind.Broken))
     }
 
@@ -102,10 +104,10 @@ object ChunkEvents {
     fun onExplosion(e: ExplosionEvent.Detonate) {
         val blocks = e.affectedBlocks
         if (blocks.isEmpty()) return
-        val tenPercentileCount = (blocks.size * 0.1).toInt().let {
+        val onePercentileCount = (blocks.size * 0.01).toInt().let {
             if (it < 1) 1 else it
         }
-        val randomBlocks = blocks.shuffled().take(tenPercentileCount)
+        val randomBlocks = blocks.shuffled().take(onePercentileCount)
         for (block in randomBlocks) {
             val chunk = e.level.getChunk(block).let {
                 e.level.chunkSource.getChunkNow(it.pos.x, it.pos.z)

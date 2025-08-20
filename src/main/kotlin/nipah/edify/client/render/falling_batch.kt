@@ -14,11 +14,9 @@ import net.minecraft.world.level.Level
 import net.minecraft.world.level.block.state.BlockState
 import net.minecraft.world.phys.AABB
 import nipah.edify.types.WorldBlock
-import nipah.edify.utils.betweenClosedBlocks
-import nipah.edify.utils.minus
-import nipah.edify.utils.toVec3
-import nipah.edify.utils.toVec3i
+import nipah.edify.utils.*
 import org.joml.Matrix4f
+import org.joml.Quaternionf
 import org.joml.Vector3f
 import java.util.concurrent.CopyOnWriteArrayList
 import kotlin.random.Random
@@ -26,6 +24,9 @@ import kotlin.random.Random
 class FallingBatch(
     val origin: BlockPos,
     var pos: Vector3f,
+    var foot: Vector3f,
+    val centerOfMass: Vector3f,
+    var rotation: Quaternionf,
     var vel: Vector3f = Vector3f(0f, -0.1f, 0f),
     val travelled: Float = 0f,
     val blocks: CopyOnWriteArrayList<WorldBlock>,
@@ -81,19 +82,44 @@ class FallingBatch(
             val minPos = BlockPos(minX, minY, minZ)
             val maxPos = BlockPos(maxX, maxY, maxZ)
 
-            val aabb = AABB.encapsulatingFullBlocks(minPos, maxPos).also { cachedAabb = it }
-            val delta = pos.toVec3() - aabb.minPosition
-            aabb.move(delta)
-            return aabb
+            var aabb = AABB.encapsulatingFullBlocks(minPos, maxPos)
+            var delta = pos.toVec3() - aabb.minPosition
+//            delta = delta.add(0.0, 0.1, 0.0)
+//            aabb = aabb.move(delta)
+
+            val pivotLocal = origin.toVec3()
+            val pivotWorld = pos.toVec3()
+
+// 1) place the local pivot at world 'pos'
+            aabb = aabb.move(
+                pivotWorld.x - pivotLocal.x,
+                pivotWorld.y - pivotLocal.y,
+                pivotWorld.z - pivotLocal.z
+            )
+
+            return aabb.rotate(
+                rotation,
+                pivotWorld = pos
+            )
         }
 
     fun tick() {
         pos.add(vel) // super simple; add gravity, damping, etc.
-        travelled + vel.length()
-        if (cachedAabb != null) {
-            val delta = pos.toVec3() - aabb.minPosition
-            cachedAabb = cachedAabb!!.move(delta)
+        foot.add(vel)
+        val ogRot = rotation
+        rotation = rotation.tiltTowardCoM(
+            comWorld = centerOfMass,
+            pivotWorld = foot
+        )
+        if (ogRot != rotation) {
+            cachedAabb = null
+            val eat = aabb
         }
+        travelled + vel.length()
+//        if (cachedAabb != null) {
+//            val delta = pos.toVec3() - aabb.minPosition
+//            cachedAabb = cachedAabb!!.move(delta)
+//        }
     }
 
     fun tickServer(level: ServerLevel) {

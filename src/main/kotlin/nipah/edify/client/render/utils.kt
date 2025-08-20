@@ -4,6 +4,8 @@ import net.minecraft.core.BlockPos
 import net.minecraft.world.level.Level
 import nipah.edify.types.to
 import nipah.edify.utils.toCopyOnWriteArrayList
+import nipah.edify.utils.toVec3f
+import org.joml.Quaternionf
 import org.joml.Vector3f
 
 fun createBatch(
@@ -15,6 +17,9 @@ fun createBatch(
     val centerOfMass = blocks.fold(Vector3f(0f, 0f, 0f)) { acc, pos ->
         acc.add(pos.x.toFloat(), pos.y.toFloat(), pos.z.toFloat())
     }.div(blocks.size.toFloat())
+
+    val lowestFootPos = blocks.minByOrNull { it.y } ?: origin
+
     val velocity = Vector3f(
         centerOfMass.x - origin.x.toFloat(),
         centerOfMass.y - origin.y.toFloat(),
@@ -27,6 +32,9 @@ fun createBatch(
         origin,
         pos = Vector3f(origin.x.toFloat(), origin.y.toFloat(), origin.z.toFloat()),
         vel = velocity,
+        centerOfMass = centerOfMass,
+        foot = lowestFootPos.toVec3f(),
+        rotation = Quaternionf(),
         blocks = blocks.map { pos ->
             pos to level.getBlockState(pos)
         }.toCopyOnWriteArrayList(),
