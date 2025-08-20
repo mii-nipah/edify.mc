@@ -51,6 +51,9 @@ hs_err_pid*
 # Kotlin Sessions
 *.salive
 
+# profile things
+.profileconfig.json
+
 # General
 .DS_Store
 .AppleDouble
