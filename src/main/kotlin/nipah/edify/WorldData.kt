@@ -7,7 +7,7 @@ import net.minecraft.world.level.Level
 import net.minecraft.world.level.chunk.LevelChunk
 import nipah.edify.client.render.createBatch
 import nipah.edify.utils.TickScheduler
-import nipah.edify.utils.collectNeighborsTopBottom
+import nipah.edify.utils.collectNeighborsWithCornersUpFirst
 
 object WorldData {
     val chunkData = mutableMapOf<ChunkPos, ChunkData>()
@@ -47,7 +47,7 @@ object WorldData {
         val removedArray = removed.toTypedArray()
         val seed = listOf(
             *removedArray,
-            *removed.flatMap { it.collectNeighborsTopBottom() }.toTypedArray()
+            *removed.flatMap { it.collectNeighborsWithCornersUpFirst() }.toTypedArray()
         )
 
         val toRemove = scan.scan(seed) ?: return@launch

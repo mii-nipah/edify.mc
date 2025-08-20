@@ -124,6 +124,55 @@ fun BlockPos.collectNeighborsTopBottom(): MutableList<BlockPos> {
     return neighbors
 }
 
+inline fun BlockPos.forEachNeighborWithCornersNoAlloc(body: (BlockPos.MutableBlockPos) -> Unit) {
+    val m = BlockPos.MutableBlockPos()
+    val x0 = this.x;
+    val y0 = this.y;
+    val z0 = this.z
+    for (dx in -1..1) for (dy in -1..1) for (dz in -1..1) {
+        if ((dx or dy or dz) == 0) continue // skip self
+        m.set(x0 + dx, y0 + dy, z0 + dz)
+        body(m)
+    }
+}
+
+val OFFSETS_UP_FIRST: IntArray = intArrayOf(
+    // faces (6): up, N, S, W, E, down
+    0, 1, 0, 0, 0, -1, 0, 0, 1, -1, 0, 0, 1, 0, 0, 0, -1, 0,
+    // up edges (4)
+    1, 1, 0, -1, 1, 0, 0, 1, 1, 0, 1, -1,
+    // up corners (4)
+    1, 1, 1, 1, 1, -1, -1, 1, 1, -1, 1, -1,
+    // horizontal diagonals (4)
+    1, 0, 1, 1, 0, -1, -1, 0, 1, -1, 0, -1,
+    // down edges (4)
+    1, -1, 0, -1, -1, 0, 0, -1, 1, 0, -1, -1,
+    // down corners (4)
+    1, -1, 1, 1, -1, -1, -1, -1, 1, -1, -1, -1
+)
+
+inline fun BlockPos.forEachNeighborWithCornersUpFirstNoAlloc(body: (BlockPos.MutableBlockPos) -> Unit) {
+    val m = BlockPos.MutableBlockPos()
+    val x0 = this.x;
+    val y0 = this.y;
+    val z0 = this.z
+    var i = 0
+    while (i < OFFSETS_UP_FIRST.size) {
+        val dx = OFFSETS_UP_FIRST[i];
+        val dy = OFFSETS_UP_FIRST[i + 1];
+        val dz = OFFSETS_UP_FIRST[i + 2]
+        m.set(x0 + dx, y0 + dy, z0 + dz)
+        body(m)
+        i += 3
+    }
+}
+
+fun BlockPos.collectNeighborsWithCornersUpFirst(): MutableList<BlockPos> {
+    val neighbors = mutableListOf<BlockPos>()
+    this.forEachNeighborWithCornersUpFirstNoAlloc { neighbors.add(BlockPos(it)) }
+    return neighbors
+}
+
 fun BlockState.holdsNoHeight(level: LevelReader, pos: BlockPos): Boolean {
     val state = this
 
