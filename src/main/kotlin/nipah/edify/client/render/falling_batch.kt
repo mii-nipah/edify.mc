@@ -22,6 +22,7 @@ import org.joml.Matrix4f
 import org.joml.Quaternionf
 import org.joml.Vector3f
 import java.util.concurrent.CopyOnWriteArrayList
+import kotlin.math.absoluteValue
 import kotlin.random.Random
 
 class FallingBatch(
@@ -31,6 +32,7 @@ class FallingBatch(
     val centerOfMass: Vector3f,
     var rotation: Quaternionf,
     var vel: Vector3f = Vector3f(0f, -0.1f, 0f),
+    val gravity: Float = vel.y.absoluteValue,
     val travelled: Float = 0f,
     val blocks: CopyOnWriteArrayList<WorldBlock>,
     val levelKey: ResourceKey<Level>,
@@ -108,6 +110,7 @@ class FallingBatch(
     fun tick() {
         pos.add(vel)
         foot.add(vel)
+        vel.y = (vel.y - gravity).coerceAtLeast(-(gravity * 1.5f))
         val ogRot = rotation
         rotation = rotation.tiltTowardCoM(
             comWorld = centerOfMass,
@@ -186,7 +189,7 @@ class FallingBatch(
                         ParticleTypes.DUST_PLUME
                     )
                     invalidate()
-                    moveUp += 0.3f
+                    moveUp += 0.5f
                     moves++
                     continue
                 }
@@ -199,6 +202,8 @@ class FallingBatch(
                     invalidate()
                     somethingBreaking = true
                     selfBreaking = true
+                    moveUp += 0.2f
+                    moves++
                 }
                 if (worldBlockStr !is BlockStrength.Unbreakable) {
                     if (blockStr.willBreak < worldBlockStr.willBreak
@@ -206,6 +211,8 @@ class FallingBatch(
                     ) {
                         level.destroyBlock(movedBlockPos, true)
                         somethingBreaking = true
+                        moveUp += 0.2f
+                        moves++
                     }
                     if (Random.nextChance(worldBlockStr.willExplode)) {
                         val blockW = BlockWeight.of(block)
@@ -240,8 +247,9 @@ class FallingBatch(
             }
         }
         moveUp /= moves.coerceAtLeast(1)
-        pos.y += moveUp
-        foot.y += moveUp
+        vel.x += -vel.x * (0.1f * moveUp)
+        vel.z += -vel.z * (0.1f * moveUp)
+        vel.y += moveUp
         for (entity in entities) {
             val epos = entity.blockPosition()
             val closest = blocks.minByOrNull {
