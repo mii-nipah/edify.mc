@@ -271,7 +271,20 @@ class FallingBatch(
         }
     }
 
-    fun close() = vbo?.close()
+    fun close() {
+        val cvbo = cachedVbo
+        if (cvbo != null) {
+            if (RenderSystem.isOnRenderThread()) {
+                cvbo.close()
+            }
+            else {
+                RenderSystem.recordRenderCall {
+                    cvbo.close()
+                }
+            }
+            cachedVbo = null
+        }
+    }
 }
 
 object BatchRenderer {
