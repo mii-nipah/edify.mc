@@ -90,7 +90,6 @@ class FallingBatch(
             val pivotLocal = origin.toVec3()
             val pivotWorld = pos.toVec3()
 
-// 1) place the local pivot at world 'pos'
             aabb = aabb.move(
                 pivotWorld.x - pivotLocal.x,
                 pivotWorld.y - pivotLocal.y,
@@ -104,7 +103,7 @@ class FallingBatch(
         }
 
     fun tick() {
-        pos.add(vel) // super simple; add gravity, damping, etc.
+        pos.add(vel)
         foot.add(vel)
         val ogRot = rotation
         rotation = rotation.tiltTowardCoM(

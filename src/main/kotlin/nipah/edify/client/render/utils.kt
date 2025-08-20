@@ -7,6 +7,7 @@ import nipah.edify.utils.toCopyOnWriteArrayList
 import nipah.edify.utils.toVec3f
 import org.joml.Quaternionf
 import org.joml.Vector3f
+import kotlin.math.absoluteValue
 
 fun createBatch(
     level: Level,
@@ -27,7 +28,8 @@ fun createBatch(
     ).normalize().mul(-0.1f)
     velocity.x *= -1f
     velocity.z *= -1f
-    velocity.y = -0.15f
+    velocity.y = 0f
+    velocity.y = (-(velocity.length() * 1.15f).absoluteValue).coerceAtMost(-0.25f)
     val batch = FallingBatch(
         origin,
         pos = Vector3f(origin.x.toFloat(), origin.y.toFloat(), origin.z.toFloat()),
