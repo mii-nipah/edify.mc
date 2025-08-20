@@ -18,7 +18,6 @@ import net.neoforged.fml.common.EventBusSubscriber
 import net.neoforged.neoforge.client.event.ClientTickEvent
 import net.neoforged.neoforge.client.event.RenderLevelStageEvent
 import net.neoforged.neoforge.client.model.data.ModelData
-import nipah.edify.gizmos.Gizmos
 import nipah.edify.utils.withPush
 import org.joml.Matrix4f
 
@@ -78,10 +77,10 @@ object ClientHooks {
 
         pose.pushPose()
         for (b in BatchRenderer.batches) {
-            Gizmos.box(
-                aabb = b.aabb,
-                color = 0xff00ff00.toInt(),
-            )
+//            Gizmos.box(
+//                aabb = b.aabb,
+//                color = 0xff00ff00.toInt(),
+//            )
 
             pose.withPush {
                 // camera-space placement
