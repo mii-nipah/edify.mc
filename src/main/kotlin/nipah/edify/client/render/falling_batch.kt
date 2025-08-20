@@ -283,6 +283,14 @@ object BatchRenderer {
     }
 
     fun tick() {
+        batches.removeAll {
+            var toRemove = it.blocks.isEmpty()
+            if (it.pos.y < -100f) toRemove = true
+            if (toRemove) {
+                it.close()
+            }
+            toRemove
+        }
         batches.forEach { it.tick() }
     }
 
