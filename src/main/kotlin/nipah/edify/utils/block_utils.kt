@@ -145,3 +145,110 @@ fun BlockState.holdsNoHeight(level: LevelReader, pos: BlockPos): Boolean {
 
     return false
 }
+
+fun BlockState.isLogLike(): Boolean {
+    return hasAny(
+        BlockTags.LOGS,
+        BlockTags.LOGS_THAT_BURN,
+        BlockTags.OAK_LOGS,
+        BlockTags.BIRCH_LOGS,
+        BlockTags.SPRUCE_LOGS,
+        BlockTags.JUNGLE_LOGS,
+        BlockTags.ACACIA_LOGS,
+        BlockTags.DARK_OAK_LOGS,
+        BlockTags.CHERRY_LOGS,
+        BlockTags.MANGROVE_LOGS,
+        BlockTags.OVERWORLD_NATURAL_LOGS,
+    )
+}
+
+fun BlockState.isPlankLike(): Boolean {
+    return has(
+        BlockTags.PLANKS,
+    )
+}
+
+fun BlockState.isStoneLike(): Boolean {
+    val inTags = hasAny(
+        BlockTags.STONE_BRICKS,
+        BlockTags.NEEDS_STONE_TOOL,
+        BlockTags.STONE_ORE_REPLACEABLES,
+        BlockTags.REDSTONE_ORES,
+        BlockTags.BASE_STONE_OVERWORLD,
+        BlockTags.BASE_STONE_NETHER,
+    )
+    if (inTags) return true
+    return this.isOf(Blocks.COBBLESTONE)
+            || this.isOf(Blocks.MOSSY_COBBLESTONE)
+            || this.isOf(Blocks.GRANITE)
+            || this.isOf(Blocks.DIORITE)
+            || this.isOf(Blocks.ANDESITE)
+            || this.isOf(Blocks.TUFF)
+            || this.isOf(Blocks.DRIPSTONE_BLOCK)
+}
+
+fun BlockState.isDirtLike(): Boolean {
+    return hasAny(
+        BlockTags.DIRT,
+        BlockTags.SAND,
+        BlockTags.NYLIUM,
+        BlockTags.CONVERTABLE_TO_MUD,
+    )
+}
+
+fun BlockState.isNonSupporting(): Boolean {
+    return hasAny(
+        BlockTags.BUTTONS,
+        BlockTags.FENCES,
+        BlockTags.WALLS,
+        BlockTags.PRESSURE_PLATES,
+        BlockTags.SLABS,
+        BlockTags.STAIRS,
+        BlockTags.TRAPDOORS,
+        BlockTags.WOODEN_TRAPDOORS,
+        BlockTags.DOORS,
+        BlockTags.WOODEN_DOORS,
+        BlockTags.WOODEN_BUTTONS,
+        BlockTags.WOODEN_PRESSURE_PLATES,
+        BlockTags.WOOL_CARPETS,
+        BlockTags.BAMBOO_BLOCKS,
+        BlockTags.CLIMBABLE,
+        BlockTags.CROPS,
+        BlockTags.FLOWERS,
+        BlockTags.SAPLINGS,
+        BlockTags.SMALL_FLOWERS,
+        BlockTags.TALL_FLOWERS,
+        BlockTags.CAVE_VINES,
+        BlockTags.RAILS,
+        BlockTags.BEDS,
+        BlockTags.SNOW,
+        BlockTags.LEAVES,
+    )
+}
+
+fun BlockState.isExplosive(): Boolean {
+    val tagged = hasAny(
+        BlockTags.FIRE,
+        BlockTags.CAMPFIRES,
+        BlockTags.SOUL_FIRE_BASE_BLOCKS,
+    )
+    if (tagged) return true
+    return this.isOf(Blocks.TNT)
+            || this.isOf(Blocks.CREEPER_HEAD)
+            || this.isOf(Blocks.CREEPER_WALL_HEAD)
+}
+
+fun BlockState.isHeavy(): Boolean {
+    return this.isOf(Blocks.OBSIDIAN)
+            || this.isOf(Blocks.CRYING_OBSIDIAN)
+            || this.isOf(Blocks.ANCIENT_DEBRIS)
+            || this.isOf(Blocks.NETHERITE_BLOCK)
+            || this.isOf(Blocks.DRAGON_EGG)
+            || this.isOf(Blocks.END_PORTAL_FRAME)
+            || this.isOf(Blocks.BEDROCK)
+            || this.isOf(Blocks.BARRIER)
+            || this.isOf(Blocks.IRON_BLOCK)
+            || this.isOf(Blocks.GOLD_BLOCK)
+            || this.isOf(Blocks.DIAMOND_BLOCK)
+            || this.isOf(Blocks.EMERALD_BLOCK)
+}

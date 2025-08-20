@@ -9,10 +9,13 @@ import net.minecraft.core.BlockPos
 import net.minecraft.core.particles.ParticleTypes
 import net.minecraft.resources.ResourceKey
 import net.minecraft.server.level.ServerLevel
-import net.minecraft.world.entity.item.ItemEntity
 import net.minecraft.world.level.Level
+import net.minecraft.world.level.block.Block
 import net.minecraft.world.level.block.state.BlockState
+import net.minecraft.world.level.storage.loot.LootParams
 import net.minecraft.world.phys.AABB
+import nipah.edify.types.BlockStrength
+import nipah.edify.types.BlockWeight
 import nipah.edify.types.WorldBlock
 import nipah.edify.utils.*
 import org.joml.Matrix4f
@@ -125,6 +128,8 @@ class FallingBatch(
         val voxels = level.getBlockCollisions(null, aabb).flatMap { it.bounds().betweenClosedBlocks() }
         val entities = level.getEntities(null, aabb)
 
+        val lootParams = LootParams.Builder(level).withLuck(0.5f)
+
         fun spawnDust(pos: BlockPos) {
             level.sendParticles(
                 ParticleTypes.DUST_PLUME,
@@ -150,17 +155,16 @@ class FallingBatch(
         }
 
         fun spawnBlockItem(pos: BlockPos, block: BlockState) {
-            val stack = block.block.getCloneItemStack(
-                level, pos, block
-            )
-            val item = ItemEntity(
+            spawnSmoke(pos)
+            Block.dropResources(
+                block,
                 level,
-                pos.x + 0.5, pos.y + 0.5, pos.z + 0.5,
-                stack
+                pos
             )
-            level.addFreshEntity(item)
         }
 
+        var moveUp = 0f
+        var moves = 0
         if (voxels.any()) {
             for (blockPair in blocks) {
                 val (originalBlockPos, block) = blockPair
@@ -170,41 +174,74 @@ class FallingBatch(
                 val travelledFactor = 1 - (1f / originalBlockPos.distManhattan(movedBlockPos))
                 val worldBlock = level.getBlockState(movedBlockPos)
                 if (worldBlock.isAir || worldBlock.isEmpty) continue
-                val hardness = block.block.defaultBlockState().getDestroySpeed(
-                    level, movedBlockPos
-                ) * travelledFactor
-                val worldBlockHardness = worldBlock.block.defaultBlockState().getDestroySpeed(
-                    level, movedBlockPos
-                ) * travelledFactor
-                if (hardness > 3f) {
+
+                val blockStr = BlockStrength.of(block)
+                val worldBlockStr = BlockStrength.of(worldBlock)
+
+                if (Random.nextChance(blockStr.willPut)) {
+                    level.setBlockAndUpdate(movedBlockPos.above(), block)
+                    blocks.remove(blockPair)
+                    level.sendParticlesAt(
+                        movedBlockPos,
+                        ParticleTypes.DUST_PLUME
+                    )
+                    invalidate()
+                    moveUp += 0.3f
+                    moves++
+                    continue
+                }
+
+                var somethingBreaking = false
+                var selfBreaking = false
+                if (Random.nextChance(blockStr.willBreak * (1f - worldBlockStr.willBreak))) {
+                    spawnBlockItem(movedBlockPos, block)
+                    blocks.remove(blockPair)
+                    invalidate()
+                    somethingBreaking = true
+                    selfBreaking = true
+                }
+                if (worldBlockStr !is BlockStrength.Unbreakable) {
+                    if (blockStr.willBreak < worldBlockStr.willBreak
+                        && Random.nextChance(blockStr.willBreak * (1f + worldBlockStr.willBreak))
+                    ) {
+                        level.destroyBlock(movedBlockPos, true)
+                        somethingBreaking = true
+                    }
+                    if (Random.nextChance(worldBlockStr.willExplode)) {
+                        val blockW = BlockWeight.of(block)
+                        val intensity = blockStr.intensity(blockW)
+                        // spawn explosion
+                        level.explode(null, movedBlockPos.x + 0.5, movedBlockPos.y + 0.5, movedBlockPos.z + 0.5, intensity, Level.ExplosionInteraction.BLOCK)
+                        moveUp += 0.1f
+                        moves++
+                    }
+                }
+                if (somethingBreaking) {
+                    level.sendParticlesAt(
+                        movedBlockPos,
+                        ParticleTypes.POOF
+                    )
+                }
+                if (selfBreaking) {
+                    continue
+                }
+
+                if (Random.nextChance(blockStr.willExplode * travelledFactor)) {
+                    val blockW = BlockWeight.of(block)
+                    val intensity = blockStr.intensity(blockW) * travelledFactor
                     // spawn explosion
-                    level.explode(null, movedBlockPos.x + 0.5, movedBlockPos.y + 0.5, movedBlockPos.z + 0.5, hardness / 2f, Level.ExplosionInteraction.BLOCK)
+                    level.explode(null, movedBlockPos.x + 0.5, movedBlockPos.y + 0.5, movedBlockPos.z + 0.5, intensity, Level.ExplosionInteraction.BLOCK)
                     blocks.remove(blockPair)
                     invalidate()
-                }
-                else if (worldBlockHardness >= 0f && hardness >= worldBlockHardness) {
-                    level.destroyBlock(movedBlockPos, true)
-                    blocks.remove(blockPair)
-                    // spawn smoke
-                    spawnSmoke(movedBlockPos)
-                    invalidate()
-                }
-                else {
-                    blocks.remove(blockPair)
-                    if (Random.nextBoolean()) {
-                        spawnDust(movedBlockPos)
-                        spawnBlockItem(movedBlockPos, block)
-                    }
-                    else {
-                        spawnSmoke(movedBlockPos)
-                        level.setBlockAndUpdate(
-                            movedBlockPos.above(), block
-                        )
-                    }
-                    invalidate()
+                    moveUp += 0.5f
+                    moves++
+                    continue
                 }
             }
         }
+        moveUp /= moves.coerceAtLeast(1)
+        pos.y += moveUp
+        foot.y += moveUp
         for (entity in entities) {
             val epos = entity.blockPosition()
             val closest = blocks.minByOrNull {
@@ -214,13 +251,14 @@ class FallingBatch(
             if (entity.boundingBox.inflate(2.0).contains(closest.pos.toVec3()).not()) continue
             val (bpos, bstate) = closest
             val movedPos = bpos.offset(pos.toVec3i() - origin.toVec3i())
-            val travelledFactor = 1 - (1f / bpos.distManhattan(movedPos))
-            val hardness = bstate.block.defaultBlockState().getDestroySpeed(
-                level, bpos
-            )
+            val travelledFactor = (1 - (1f / bpos.distManhattan(movedPos))).coerceAtLeast(0.1f)
+            val blockStr = BlockStrength.of(bstate)
+            val blockW = BlockWeight.of(bstate)
+            val damage = blockStr.intensity(blockW) * travelledFactor
+            if (entity.isInvulnerable || entity.isSpectator) continue
             entity.hurt(
                 level.damageSources().fall(),
-                (if (hardness < 0f) 1f else hardness / 2f) * travelledFactor
+                damage
             )
         }
     }
