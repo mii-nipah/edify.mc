@@ -75,6 +75,7 @@ class GroupScan(
             if (iter >= limit) {
                 return@launch
             }
+            tickIter++
             if (tickIter > scanPerTick) {
                 tickIter = 0
                 nextServerTick()
