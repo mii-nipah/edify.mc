@@ -15,6 +15,18 @@ inline fun LevelChunk.forEachBlock(action: (pos: BlockPos) -> Unit) {
     }
 }
 
+inline fun LevelChunk.forEachBlock(yRange: IntRange, action: (pos: BlockPos) -> Unit) {
+    val bpos = BlockPos.MutableBlockPos(0, 0, 0)
+    for (x in 0 until 16) {
+        for (y in yRange) {
+            for (z in 0 until 16) {
+                bpos.set(x, y, z)
+                action(bpos)
+            }
+        }
+    }
+}
+
 fun LevelChunk.isInBounds(pos: BlockPos): Boolean {
     if ((pos.x shr 4) != this.pos.x) return false
     if ((pos.z shr 4) != this.pos.z) return false

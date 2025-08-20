@@ -13,7 +13,7 @@ import nipah.edify.utils.*
 class GroupScan(
     val chunks: ChunkAccess,
     private val limit: Int = 100_000,
-    private val scanPerTick: Int = 100_000,
+    private val scanPerTick: Int = 10_000,
 ) {
     private val toVisit = LongArrayFIFOQueue(50_000)
     private val visited = LongOpenHashSet(1_000_000)
@@ -31,11 +31,19 @@ class GroupScan(
         val seed = if (seed.size > 1000) seed.takeRandomNPercentile(0.01f) else seed
         currentJob?.cancel()
         clear()
+        var matched = 0
         for (pos in seed) {
             toVisit.enqueue(pos.asLong())
+            val ogGroupSize = group.size
             currentJob = mapGroup()
             try {
                 currentJob?.join()
+                if (ogGroupSize != group.size) {
+                    matched++
+                    if (matched >= 2) {
+                        break
+                    }
+                }
             }
             catch (_: Throwable) {
                 return null

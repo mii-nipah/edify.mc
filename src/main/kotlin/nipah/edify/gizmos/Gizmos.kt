@@ -6,6 +6,7 @@ import net.minecraft.client.Minecraft
 import net.minecraft.client.gui.Font
 import net.minecraft.client.renderer.LevelRenderer
 import net.minecraft.client.renderer.RenderType
+import net.minecraft.core.BlockPos
 import net.minecraft.world.phys.AABB
 import net.minecraft.world.phys.Vec3
 import java.util.concurrent.CopyOnWriteArrayList
@@ -17,6 +18,24 @@ import kotlin.math.sin
 enum class Depth { DEPTH_TEST, XRAY }
 
 object Gizmos {
+    object Color {
+        const val red = 0xFFFF5555.toInt()
+        const val green = 0xFF55FF55.toInt()
+        const val blue = 0xFF5555FF.toInt()
+        const val yellow = 0xFFFFFF55.toInt()
+        const val cyan = 0xFF55FFFF.toInt()
+        const val magenta = 0xFFFF55FF.toInt()
+        const val white = 0xFFFFFFFF.toInt()
+        const val black = 0xFF000000.toInt()
+        const val gray = 0xFF888888.toInt()
+        const val lightGray = 0xFFCCCCCC.toInt()
+        const val darkGray = 0xFF444444.toInt()
+        const val orange = 0xFFFFA500.toInt()
+        const val purple = 0xFF800080.toInt()
+        const val pink = 0xFFFFC0CB.toInt()
+        const val brown = 0xFFA52A2A.toInt()
+    }
+
     // -------- Public API --------
     fun line(a: Vec3, b: Vec3, color: Int, depth: Depth = Depth.DEPTH_TEST, ttl: Int = 0, tag: String? = null) {
         push(LineCmd(a, b, color, depth, ttl, tag))
@@ -31,6 +50,14 @@ object Gizmos {
     }
 
     fun box(aabb: AABB, color: Int, depth: Depth = Depth.DEPTH_TEST, ttl: Int = 0, tag: String? = null) {
+        push(BoxCmd(aabb, color, depth, ttl, tag))
+    }
+
+    fun block(pos: BlockPos, color: Int, depth: Depth = Depth.DEPTH_TEST, ttl: Int = 0, tag: String? = null) {
+        val aabb = AABB(
+            pos.x.toDouble(), pos.y.toDouble(), pos.z.toDouble(),
+            pos.x + 1.0, pos.y + 1.0, pos.z + 1.0
+        ).inflate(0.03)
         push(BoxCmd(aabb, color, depth, ttl, tag))
     }
 

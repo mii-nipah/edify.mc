@@ -30,7 +30,7 @@ class ChunkData(val chunkPos: ChunkPos, chunk: LevelChunk) {
 
     init {
         val wpos = BlockPos.MutableBlockPos()
-        chunk.forEachBlock { pos ->
+        chunk.forEachBlock(chunk.minBuildHeight until chunk.minBuildHeight + 2) { pos ->
             chunk.localToWorldPosNoAlloc(pos, wpos)
             val block = chunk.getBlockState(wpos)
             if (block.isAir || block.block is LiquidBlock) {

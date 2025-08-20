@@ -34,6 +34,15 @@ inline fun BlockPos.forEachNeighbor(func: (BlockPos) -> Unit) {
     func(this.below())
 }
 
+inline fun BlockPos.forEachNeighborTopBottom(func: (BlockPos) -> Unit) {
+    func(this.above())
+    func(this.north())
+    func(this.south())
+    func(this.east())
+    func(this.west())
+    func(this.below())
+}
+
 inline fun BlockPos.forEachNeighborNoAlloc(func: (BlockPos) -> Unit) {
     val pos = asLong()
     val north = BlockPos.offset(pos, Direction.NORTH)
@@ -104,6 +113,12 @@ inline fun BlockPos.findNeighborNoAlloc(func: (BlockPos) -> Boolean): BlockPos? 
 }
 
 fun BlockPos.collectNeighbors(): MutableList<BlockPos> {
+    val neighbors = mutableListOf<BlockPos>()
+    this.forEachNeighbor { neighbors.add(it) }
+    return neighbors
+}
+
+fun BlockPos.collectNeighborsTopBottom(): MutableList<BlockPos> {
     val neighbors = mutableListOf<BlockPos>()
     this.forEachNeighbor { neighbors.add(it) }
     return neighbors
