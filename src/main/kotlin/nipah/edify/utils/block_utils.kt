@@ -212,6 +212,7 @@ fun BlockState.isNonSupporting(): Boolean {
         BlockTags.WOODEN_PRESSURE_PLATES,
         BlockTags.WOOL_CARPETS,
         BlockTags.BAMBOO_BLOCKS,
+        BlockTags.CORAL_PLANTS,
         BlockTags.CLIMBABLE,
         BlockTags.CROPS,
         BlockTags.FLOWERS,
