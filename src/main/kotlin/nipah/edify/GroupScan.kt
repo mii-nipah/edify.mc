@@ -91,7 +91,6 @@ class GroupScan(
                 metaGroup.add(longPos)
             }
             else {
-                val xpos = pos
                 return@launch
             }
 
