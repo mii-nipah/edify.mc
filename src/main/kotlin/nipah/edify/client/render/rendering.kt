@@ -27,7 +27,7 @@ import org.joml.Matrix4f
 object ClientHooks {
     @SubscribeEvent
     fun onClientTick(e: ClientTickEvent.Pre) {
-        BatchRenderer.tick()
+
     }
 
     val buffer = ByteBufferBuilder(64_000)

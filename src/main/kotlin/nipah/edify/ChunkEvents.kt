@@ -62,6 +62,7 @@ object ChunkEvents {
 
         serverTicks++
 //        if (serverTicks % 5 != 0) return
+        BatchRenderer.tick()
         for (batch in BatchRenderer.batches) {
             batch.tickServer(
                 ev.server.getLevel(batch.levelKey) ?: continue
