@@ -3,6 +3,7 @@ package nipah.edify
 import it.unimi.dsi.fastutil.longs.LongArrayFIFOQueue
 import it.unimi.dsi.fastutil.longs.LongOpenHashSet
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import net.minecraft.core.BlockPos
@@ -29,7 +30,7 @@ class GroupScan(
     private var currentJob: Job? = null
     suspend fun scan(seed: List<BlockPos>): List<BlockPos>? {
         val seed = if (seed.size > 1000) seed.takeRandomNPercentile(0.01f) else seed
-        currentJob?.cancel()
+        currentJob?.cancelAndJoin()
         clear()
         var matched = 0
         for (pos in seed) {
