@@ -2,7 +2,6 @@ package nipah.edify.client.render
 
 import com.mojang.blaze3d.systems.RenderSystem
 import com.mojang.blaze3d.vertex.VertexBuffer
-import it.unimi.dsi.fastutil.longs.LongOpenHashSet
 import net.minecraft.client.Minecraft
 import net.minecraft.client.renderer.GameRenderer
 import net.minecraft.client.renderer.texture.TextureAtlas
@@ -176,7 +175,6 @@ class FallingBatch(
         var moves = 0
         var collisionWeight = 0f
         val toRemove = mutableListOf<WorldBlock>()
-        val processed = LongOpenHashSet()
         if (voxels.any()) {
             val cells = voxels
                 .map { voxel ->
@@ -195,7 +193,6 @@ class FallingBatch(
                 val cell = space.get(cellKey) ?: continue
                 for (blockPair in cell) {
                     val longPos = blockPair.pos.asLong()
-                    if (longPos in processed) continue
 
                     val (originalBlockPos, block) = blockPair
                     val movedBlockPos = originalBlockPos.offset(
@@ -212,7 +209,6 @@ class FallingBatch(
                     if (Random.nextChance(blockStr.willPut)) {
                         level.setBlockAndUpdate(movedBlockPos.above(), block)
                         toRemove.add(blockPair)
-                        processed.add(longPos)
                         totalWeight -= blockW.value
                         level.sendParticlesAt(
                             movedBlockPos,
@@ -230,7 +226,6 @@ class FallingBatch(
                     if (Random.nextChance(blockStr.willBreak * (1f - worldBlockStr.willBreak))) {
                         spawnBlockItem(movedBlockPos, block)
                         toRemove.add(blockPair)
-                        processed.add(longPos)
                         totalWeight -= blockW.value
                         invalidate()
                         somethingBreaking = true
@@ -248,7 +243,6 @@ class FallingBatch(
                             moveUp += 0.2f
                             moves++
                             collisionWeight += blockW.value
-                            processed.add(longPos)
                         }
                         if (Random.nextChance(worldBlockStr.willExplode)) {
                             val intensity = blockStr.intensity(blockW)
@@ -257,7 +251,6 @@ class FallingBatch(
                             moveUp += 0.1f
                             moves++
                             collisionWeight += blockW.value
-                            processed.add(longPos)
                         }
                     }
                     if (somethingBreaking) {
@@ -281,7 +274,6 @@ class FallingBatch(
                         moveUp += 0.5f
                         moves++
                         collisionWeight += blockW.value
-                        processed.add(longPos)
                         continue
                     }
                 }
