@@ -1,8 +1,10 @@
 package nipah.edify.spatial
 
 import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap
+import it.unimi.dsi.fastutil.longs.LongArrayList
 import net.minecraft.core.BlockPos
 import nipah.edify.types.WorldBlock
+import nipah.edify.utils.contains
 
 data class SparseSpatialGrid(
     private val cellSize: Int,
@@ -37,6 +39,28 @@ data class SparseSpatialGrid(
     fun get(key: Long): List<WorldBlock>? {
         val bucket = cells[key] ?: return null
         return if (bucket.isEmpty()) null else bucket
+    }
+
+    fun getClosestCells(at: BlockPos, radiusCells: Int): LongArrayList {
+        val cx = at.x.floorDiv(cellSize)
+        val cy = at.y.floorDiv(cellSize)
+        val cz = at.z.floorDiv(cellSize)
+
+        val span = 2 * radiusCells + 1
+        val result = LongArrayList(span * span * span)
+
+        for (dx in -radiusCells..radiusCells) {
+            val x = cx + dx
+            for (dy in -radiusCells..radiusCells) {
+                val y = cy + dy
+                for (dz in -radiusCells..radiusCells) {
+                    val z = cz + dz
+                    val key = BlockPos.asLong(x, y, z) // <-- no floorDiv here
+                    if (key in cells) result.add(key)
+                }
+            }
+        }
+        return result
     }
 
     fun clear() {

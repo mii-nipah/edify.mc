@@ -295,9 +295,24 @@ class FallingBatch(
         vel.y += moveUp
         for (entity in entities) {
             val epos = entity.blockPosition()
-            val closest = blocks.minByOrNull {
-                val movedPos = it.pos.offset(pos.toVec3i() - origin.toVec3i())
-                movedPos.distManhattan(epos)
+            val eposInOrigin = epos.offset(
+                pos.toVec3i() - origin.toVec3i()
+            )
+            val closestCells = space.getClosestCells(epos, 2)
+                .mapNotNull { cellKey -> space.get(cellKey) }
+            val closest = run {
+                var closest: WorldBlock? = null
+                var closestDist = Int.MAX_VALUE
+                for (cell in closestCells) {
+                    for (blockPair in cell) {
+                        val dist = blockPair.pos.distManhattan(eposInOrigin)
+                        if (dist < closestDist) {
+                            closestDist = dist
+                            closest = blockPair
+                        }
+                    }
+                }
+                closest
             } ?: continue
             if (entity.boundingBox.inflate(2.0).contains(closest.pos.toVec3()).not()) continue
             val (bpos, bstate) = closest
