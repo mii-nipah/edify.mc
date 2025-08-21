@@ -1,10 +1,6 @@
 package nipah.edify.client.render
 
-import com.mojang.blaze3d.systems.RenderSystem
-import com.mojang.blaze3d.vertex.VertexBuffer
-import net.minecraft.client.Minecraft
-import net.minecraft.client.renderer.GameRenderer
-import net.minecraft.client.renderer.texture.TextureAtlas
+import it.unimi.dsi.fastutil.longs.LongArrayList
 import net.minecraft.core.BlockPos
 import net.minecraft.core.particles.ParticleTypes
 import net.minecraft.resources.ResourceKey
@@ -12,14 +8,12 @@ import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.level.Level
 import net.minecraft.world.level.block.Block
 import net.minecraft.world.level.block.state.BlockState
-import net.minecraft.world.level.storage.loot.LootParams
 import net.minecraft.world.phys.AABB
 import nipah.edify.spatial.SparseSpatialGrid
 import nipah.edify.types.BlockStrength
 import nipah.edify.types.BlockWeight
 import nipah.edify.types.WorldBlock
 import nipah.edify.utils.*
-import org.joml.Matrix4f
 import org.joml.Quaternionf
 import org.joml.Vector3f
 import java.util.concurrent.CopyOnWriteArrayList
@@ -40,46 +34,13 @@ class FallingBatch(
     val space: SparseSpatialGrid,
     val levelKey: ResourceKey<Level>,
 ) {
-    fun invalidate() {
-        cachedAabb = null
-        val existingVbo = cachedVbo
-        RenderSystem.recordRenderCall {
-            existingVbo?.close()
-        }
-        cachedVbo = null
-    }
-
-    private var cachedVbo: VertexBuffer? = null
-    private var cachedNonRenderable: List<WorldBlock>? = null
-    val vbo: VertexBuffer?
-        get() {
-            if (blocks.isEmpty()) return null
-            cachedVbo?.let { return it }
-            val mc = Minecraft.getInstance()
-            val level = mc.level ?: error("No level")
-            if (level.dimension() != levelKey) error("Wrong dimension")
-            return (buildSolidMesh(
-                level,
-                blocks,
-                origin
-            ) ?: return null).also {
-                cachedVbo = it.first
-                cachedNonRenderable = it.second
-            }.first
-        }
-    val nonRenderable: List<WorldBlock>
-        get() {
-            if (cachedNonRenderable != null) return cachedNonRenderable!!
-            val nonRenderable = blocks.filter { isNonRenderableMesh(it.state) }
-            return nonRenderable.also {
-                cachedNonRenderable = it
-            }
-        }
-
-    private var cachedAabb: AABB? = null
-    val aabb: AABB
-        get() {
-            if (cachedAabb != null) return cachedAabb!!
+    companion object {
+        fun computeAabb(
+            blocks: List<WorldBlock>,
+            origin: BlockPos,
+            pos: Vector3f,
+            rotation: Quaternionf,
+        ): AABB {
             val minX = blocks.minOfOrNull { it.pos.x } ?: origin.x
             val minY = blocks.minOfOrNull { it.pos.y } ?: origin.y
             val minZ = blocks.minOfOrNull { it.pos.z } ?: origin.z
@@ -109,6 +70,23 @@ class FallingBatch(
                 pivotWorld = pos
             )
         }
+    }
+
+    fun invalidate() {
+        cachedAabb = null
+    }
+
+    private var cachedAabb: AABB? = null
+    val aabb: AABB
+        get() {
+            if (cachedAabb != null) return cachedAabb!!
+            return computeAabb(
+                blocks = blocks,
+                origin = origin,
+                pos = pos,
+                rotation = rotation
+            )
+        }
 
     fun tick() {
         pos.add(vel)
@@ -130,13 +108,13 @@ class FallingBatch(
 //        }
     }
 
-    fun tickServer(level: ServerLevel) {
+    fun tickServer(level: ServerLevel): LongArrayList {
         val voxels = level.getBlockCollisions(null, aabb)
             .flatMap { it.bounds().betweenClosedBlocks() }
             .distinct()
         val entities = level.getEntities(null, aabb)
 
-        val lootParams = LootParams.Builder(level).withLuck(0.5f)
+        val allRemovedBlocks = LongArrayList()
 
         fun spawnDust(pos: BlockPos) {
             level.sendParticles(
@@ -275,6 +253,7 @@ class FallingBatch(
                 toRemove.forEach { blockPair ->
                     blocks.remove(blockPair)
                     space.remove(blockPair)
+                    allRemovedBlocks.add(blockPair.pos.asLong())
                 }
             }
         }
@@ -318,21 +297,10 @@ class FallingBatch(
                 damage
             )
         }
+        return allRemovedBlocks
     }
 
     fun close() {
-        val cvbo = cachedVbo
-        if (cvbo != null) {
-            if (RenderSystem.isOnRenderThread()) {
-                cvbo.close()
-            }
-            else {
-                RenderSystem.recordRenderCall {
-                    cvbo.close()
-                }
-            }
-            cachedVbo = null
-        }
     }
 }
 
@@ -354,29 +322,5 @@ object BatchRenderer {
             toRemove
         }
         batches.forEach { it.tick() }
-    }
-
-    fun render(viewMV: Matrix4f, proj: Matrix4f) {
-        if (batches.isEmpty()) return
-
-        val shader = GameRenderer.getRendertypeEntitySolidShader() // match what you baked
-        RenderSystem.setShader { shader }
-        RenderSystem.setShaderTexture(0, TextureAtlas.LOCATION_BLOCKS)
-
-        val lt = Minecraft.getInstance().gameRenderer.lightTexture()
-        lt.turnOnLightLayer()
-
-        RenderSystem.enableDepthTest()
-        RenderSystem.enableCull()
-        RenderSystem.disableBlend()
-        RenderSystem.setShaderColor(1f, 1f, 1f, 1f)
-
-        val mv = Matrix4f()
-        for (b in batches) {
-            mv.set(viewMV).translate(b.pos.x, b.pos.y, b.pos.z)
-            b.vbo?.bind()
-            b.vbo?.drawWithShader(mv, proj, shader)
-            VertexBuffer.unbind()
-        }
     }
 }

@@ -18,6 +18,7 @@ import net.neoforged.fml.common.EventBusSubscriber
 import net.neoforged.neoforge.client.event.ClientTickEvent
 import net.neoforged.neoforge.client.event.RenderLevelStageEvent
 import net.neoforged.neoforge.client.model.data.ModelData
+import nipah.edify.entities.FallingStructureEntity
 import nipah.edify.utils.withPush
 import org.joml.Matrix4f
 
@@ -34,6 +35,7 @@ object ClientHooks {
     @SubscribeEvent
     fun onRenderLevelStage(e: RenderLevelStageEvent) {
         if (e.stage != RenderLevelStageEvent.Stage.AFTER_ENTITIES) return
+        return
 
         val mc = Minecraft.getInstance()
         val level = mc.level ?: return
@@ -76,7 +78,7 @@ object ClientHooks {
         }
 
         pose.pushPose()
-        for (b in BatchRenderer.batches) {
+        for (b in FallingStructureEntity.toRender) {
 //            Gizmos.box(
 //                aabb = b.aabb,
 //                color = 0xff00ff00.toInt(),

@@ -2,6 +2,7 @@ package nipah.edify.client.render
 
 import net.minecraft.core.BlockPos
 import net.minecraft.world.level.Level
+import nipah.edify.entities.ModEntities
 import nipah.edify.spatial.SparseSpatialGrid
 import nipah.edify.types.BlockWeight
 import nipah.edify.types.to
@@ -61,5 +62,15 @@ fun createBatch(
         space = space,
         levelKey = level.dimension()
     )
-    BatchRenderer.add(batch)
+//    BatchRenderer.add(batch)
+
+    val entity = ModEntities.fallingStructure.value().create(level)!!
+    entity.moveTo(
+        origin.x.toDouble(),
+        origin.y.toDouble(),
+        origin.z.toDouble(),
+        0f, 0f
+    )
+    entity.setSpawnData(batch)
+    level.addFreshEntity(entity)
 }
