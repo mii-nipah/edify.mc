@@ -2,6 +2,7 @@ package nipah.edify.client.render
 
 import com.mojang.blaze3d.systems.RenderSystem
 import com.mojang.blaze3d.vertex.VertexBuffer
+import it.unimi.dsi.fastutil.longs.LongOpenHashSet
 import net.minecraft.client.Minecraft
 import net.minecraft.client.renderer.GameRenderer
 import net.minecraft.client.renderer.texture.TextureAtlas
@@ -14,6 +15,7 @@ import net.minecraft.world.level.block.Block
 import net.minecraft.world.level.block.state.BlockState
 import net.minecraft.world.level.storage.loot.LootParams
 import net.minecraft.world.phys.AABB
+import nipah.edify.spatial.SparseSpatialGrid
 import nipah.edify.types.BlockStrength
 import nipah.edify.types.BlockWeight
 import nipah.edify.types.WorldBlock
@@ -36,6 +38,7 @@ class FallingBatch(
     val gravity: Float = vel.y.absoluteValue,
     val travelled: Float = 0f,
     val blocks: CopyOnWriteArrayList<WorldBlock>,
+    val space: SparseSpatialGrid,
     val levelKey: ResourceKey<Level>,
 ) {
     fun invalidate() {
@@ -129,7 +132,9 @@ class FallingBatch(
     }
 
     fun tickServer(level: ServerLevel) {
-        val voxels = level.getBlockCollisions(null, aabb).flatMap { it.bounds().betweenClosedBlocks() }
+        val voxels = level.getBlockCollisions(null, aabb)
+            .flatMap { it.bounds().betweenClosedBlocks() }
+            .distinct()
         val entities = level.getEntities(null, aabb)
 
         val lootParams = LootParams.Builder(level).withLuck(0.5f)
@@ -170,89 +175,115 @@ class FallingBatch(
         var moveUp = 0f
         var moves = 0
         var collisionWeight = 0f
+        val toRemove = mutableListOf<WorldBlock>()
+        val processed = LongOpenHashSet()
         if (voxels.any()) {
-            for (blockPair in blocks) {
-                val (originalBlockPos, block) = blockPair
-                val movedBlockPos = originalBlockPos.offset(
-                    pos.toVec3i() - origin.toVec3i()
-                )
-                val travelledFactor = 1 - (1f / originalBlockPos.distManhattan(movedBlockPos))
-                val worldBlock = level.getBlockState(movedBlockPos)
-                if (worldBlock.isAir || worldBlock.isEmpty) continue
-
-                val blockStr = BlockStrength.of(block)
-                val worldBlockStr = BlockStrength.of(worldBlock)
-                val blockW = BlockWeight.of(block)
-
-                if (Random.nextChance(blockStr.willPut)) {
-                    level.setBlockAndUpdate(movedBlockPos.above(), block)
-                    blocks.remove(blockPair)
-                    totalWeight -= blockW.value
-                    level.sendParticlesAt(
-                        movedBlockPos,
-                        ParticleTypes.DUST_PLUME
+            val cells = voxels
+                .map { voxel ->
+                    val voxelInOrigin = voxel.subtract(
+                        pos.toVec3i() - origin.toVec3i()
                     )
-                    invalidate()
-                    moveUp += 0.5f
-                    moves++
-                    collisionWeight += blockW.value
-                    continue
+                    space.keyOf(voxelInOrigin)
                 }
-
-                var somethingBreaking = false
-                var selfBreaking = false
-                if (Random.nextChance(blockStr.willBreak * (1f - worldBlockStr.willBreak))) {
-                    spawnBlockItem(movedBlockPos, block)
+                .distinct()
+            for (cellKey in cells) {
+                toRemove.forEach { blockPair ->
                     blocks.remove(blockPair)
-                    totalWeight -= blockW.value
-                    invalidate()
-                    somethingBreaking = true
-                    selfBreaking = true
-                    moveUp += 0.2f
-                    moves++
-                    collisionWeight += blockW.value
+                    space.remove(blockPair)
                 }
-                if (worldBlockStr !is BlockStrength.Unbreakable) {
-                    if (blockStr.willBreak < worldBlockStr.willBreak
-                        && Random.nextChance(blockStr.willBreak * (1f + worldBlockStr.willBreak))
-                    ) {
-                        level.destroyBlock(movedBlockPos, true)
+                toRemove.clear()
+                val cell = space.get(cellKey) ?: continue
+                for (blockPair in cell) {
+                    val longPos = blockPair.pos.asLong()
+                    if (longPos in processed) continue
+
+                    val (originalBlockPos, block) = blockPair
+                    val movedBlockPos = originalBlockPos.offset(
+                        pos.toVec3i() - origin.toVec3i()
+                    )
+                    val travelledFactor = 1 - (1f / originalBlockPos.distManhattan(movedBlockPos))
+                    val worldBlock = level.getBlockState(movedBlockPos)
+                    if (worldBlock.isAir || worldBlock.isEmpty) continue
+
+                    val blockStr = BlockStrength.of(block)
+                    val worldBlockStr = BlockStrength.of(worldBlock)
+                    val blockW = BlockWeight.of(block)
+
+                    if (Random.nextChance(blockStr.willPut)) {
+                        level.setBlockAndUpdate(movedBlockPos.above(), block)
+                        toRemove.add(blockPair)
+                        processed.add(longPos)
+                        totalWeight -= blockW.value
+                        level.sendParticlesAt(
+                            movedBlockPos,
+                            ParticleTypes.DUST_PLUME
+                        )
+                        invalidate()
+                        moveUp += 0.5f
+                        moves++
+                        collisionWeight += blockW.value
+                        continue
+                    }
+
+                    var somethingBreaking = false
+                    var selfBreaking = false
+                    if (Random.nextChance(blockStr.willBreak * (1f - worldBlockStr.willBreak))) {
+                        spawnBlockItem(movedBlockPos, block)
+                        toRemove.add(blockPair)
+                        processed.add(longPos)
+                        totalWeight -= blockW.value
+                        invalidate()
                         somethingBreaking = true
+                        selfBreaking = true
                         moveUp += 0.2f
                         moves++
                         collisionWeight += blockW.value
                     }
-                    if (Random.nextChance(worldBlockStr.willExplode)) {
-                        val intensity = blockStr.intensity(blockW)
+                    if (worldBlockStr !is BlockStrength.Unbreakable) {
+                        if (blockStr.willBreak < worldBlockStr.willBreak
+                            && Random.nextChance(blockStr.willBreak * (1f + worldBlockStr.willBreak))
+                        ) {
+                            level.destroyBlock(movedBlockPos, true)
+                            somethingBreaking = true
+                            moveUp += 0.2f
+                            moves++
+                            collisionWeight += blockW.value
+                            processed.add(longPos)
+                        }
+                        if (Random.nextChance(worldBlockStr.willExplode)) {
+                            val intensity = blockStr.intensity(blockW)
+                            // spawn explosion
+                            level.explode(null, movedBlockPos.x + 0.5, movedBlockPos.y + 0.5, movedBlockPos.z + 0.5, intensity, Level.ExplosionInteraction.BLOCK)
+                            moveUp += 0.1f
+                            moves++
+                            collisionWeight += blockW.value
+                            processed.add(longPos)
+                        }
+                    }
+                    if (somethingBreaking) {
+                        level.sendParticlesAt(
+                            movedBlockPos,
+                            ParticleTypes.POOF
+                        )
+                    }
+                    if (selfBreaking) {
+                        continue
+                    }
+
+                    if (Random.nextChance(blockStr.willExplode * travelledFactor)) {
+                        val blockW = BlockWeight.of(block)
+                        val intensity = blockStr.intensity(blockW) * travelledFactor
                         // spawn explosion
                         level.explode(null, movedBlockPos.x + 0.5, movedBlockPos.y + 0.5, movedBlockPos.z + 0.5, intensity, Level.ExplosionInteraction.BLOCK)
-                        moveUp += 0.1f
+                        toRemove.add(blockPair)
+                        totalWeight -= blockW.value
+                        invalidate()
+                        moveUp += 0.5f
                         moves++
                         collisionWeight += blockW.value
+                        processed.add(longPos)
+                        continue
                     }
-                }
-                if (somethingBreaking) {
-                    level.sendParticlesAt(
-                        movedBlockPos,
-                        ParticleTypes.POOF
-                    )
-                }
-                if (selfBreaking) {
-                    continue
-                }
-
-                if (Random.nextChance(blockStr.willExplode * travelledFactor)) {
-                    val blockW = BlockWeight.of(block)
-                    val intensity = blockStr.intensity(blockW) * travelledFactor
-                    // spawn explosion
-                    level.explode(null, movedBlockPos.x + 0.5, movedBlockPos.y + 0.5, movedBlockPos.z + 0.5, intensity, Level.ExplosionInteraction.BLOCK)
-                    blocks.remove(blockPair)
-                    totalWeight -= blockW.value
-                    invalidate()
-                    moveUp += 0.5f
-                    moves++
-                    collisionWeight += blockW.value
-                    continue
                 }
             }
         }
@@ -310,7 +341,7 @@ object BatchRenderer {
     fun tick() {
         batches.removeAll {
             var toRemove = it.blocks.isEmpty()
-            if (it.pos.y < -100f) toRemove = true
+            if (it.pos.y < -100f || it.pos.y.isNaN()) toRemove = true
             if (toRemove) {
                 it.close()
             }

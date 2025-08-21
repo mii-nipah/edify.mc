@@ -2,6 +2,7 @@ package nipah.edify.client.render
 
 import net.minecraft.core.BlockPos
 import net.minecraft.world.level.Level
+import nipah.edify.spatial.SparseSpatialGrid
 import nipah.edify.types.BlockWeight
 import nipah.edify.types.to
 import nipah.edify.utils.toCopyOnWriteArrayList
@@ -37,6 +38,17 @@ fun createBatch(
     velocity.z *= -1f
     velocity.y = 0f
     velocity.y = (-(velocity.length() * 1.15f).absoluteValue).coerceAtMost(-0.25f)
+
+    val space = run {
+        val space = SparseSpatialGrid(
+            cellSize = 8
+        )
+        computedBlocks.forEach { pair ->
+            space.set(pair)
+        }
+        space
+    }
+
     val batch = FallingBatch(
         origin,
         pos = Vector3f(origin.x.toFloat(), origin.y.toFloat(), origin.z.toFloat()),
@@ -46,6 +58,7 @@ fun createBatch(
         foot = lowestFootPos.toVec3f(),
         rotation = Quaternionf(),
         blocks = computedBlocks.toCopyOnWriteArrayList(),
+        space = space,
         levelKey = level.dimension()
     )
     BatchRenderer.add(batch)
