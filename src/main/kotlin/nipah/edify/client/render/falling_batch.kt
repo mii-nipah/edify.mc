@@ -185,10 +185,6 @@ class FallingBatch(
                 }
                 .distinct()
             for (cellKey in cells) {
-                toRemove.forEach { blockPair ->
-                    blocks.remove(blockPair)
-                    space.remove(blockPair)
-                }
                 toRemove.clear()
                 val cell = space.get(cellKey) ?: continue
                 for (blockPair in cell) {
@@ -206,6 +202,10 @@ class FallingBatch(
                     val worldBlockStr = BlockStrength.of(worldBlock)
                     val blockW = BlockWeight.of(block)
 
+                    moveUp += 0.5f
+                    moves++
+                    collisionWeight += blockW.value
+
                     if (Random.nextChance(blockStr.willPut)) {
                         level.setBlockAndUpdate(movedBlockPos.above(), block)
                         toRemove.add(blockPair)
@@ -217,7 +217,6 @@ class FallingBatch(
                         invalidate()
                         moveUp += 0.5f
                         moves++
-                        collisionWeight += blockW.value
                         continue
                     }
 
@@ -232,7 +231,6 @@ class FallingBatch(
                         selfBreaking = true
                         moveUp += 0.2f
                         moves++
-                        collisionWeight += blockW.value
                     }
                     if (worldBlockStr !is BlockStrength.Unbreakable) {
                         if (blockStr.willBreak < worldBlockStr.willBreak
@@ -242,7 +240,6 @@ class FallingBatch(
                             somethingBreaking = true
                             moveUp += 0.2f
                             moves++
-                            collisionWeight += blockW.value
                         }
                         if (Random.nextChance(worldBlockStr.willExplode)) {
                             val intensity = blockStr.intensity(blockW)
@@ -250,7 +247,6 @@ class FallingBatch(
                             level.explode(null, movedBlockPos.x + 0.5, movedBlockPos.y + 0.5, movedBlockPos.z + 0.5, intensity, Level.ExplosionInteraction.BLOCK)
                             moveUp += 0.1f
                             moves++
-                            collisionWeight += blockW.value
                         }
                     }
                     if (somethingBreaking) {
@@ -273,9 +269,12 @@ class FallingBatch(
                         invalidate()
                         moveUp += 0.5f
                         moves++
-                        collisionWeight += blockW.value
                         continue
                     }
+                }
+                toRemove.forEach { blockPair ->
+                    blocks.remove(blockPair)
+                    space.remove(blockPair)
                 }
             }
         }

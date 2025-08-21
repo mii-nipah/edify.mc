@@ -41,7 +41,7 @@ fun createBatch(
 
     val space = run {
         val space = SparseSpatialGrid(
-            cellSize = 8
+            cellSize = 16
         )
         computedBlocks.forEach { pair ->
             space.set(pair)
