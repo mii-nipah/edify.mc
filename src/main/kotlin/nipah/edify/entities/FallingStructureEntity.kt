@@ -113,7 +113,7 @@ class FallingStructureEntity(type: EntityType<FallingStructureEntity>, level: Le
             dataClient.origin,
             dataClient.pos,
             dataClient.rotation
-        )
+        ).inflate(0.5)
     }
 
     override fun readAdditionalSaveData(tag: CompoundTag) {
@@ -175,7 +175,7 @@ class FallingStructureEntity(type: EntityType<FallingStructureEntity>, level: Le
             dataClient.origin,
             dataClient.pos,
             dataClient.rotation
-        )
+        ).inflate(0.5)
         this.origin = origin
         this.rotation = rotation
     }
