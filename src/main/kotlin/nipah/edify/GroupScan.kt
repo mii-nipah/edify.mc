@@ -80,14 +80,16 @@ class GroupScan(
             if (iter >= limit) {
                 return@launch
             }
+
+            val longPos = toVisit.dequeueLong()
+            if (longPos in visited) continue
+
             tickIter++
             if (tickIter > scanPerTick) {
                 tickIter = 0
                 nextServerTick()
             }
 
-            val longPos = toVisit.dequeueLong()
-            if (longPos in visited) continue
             pos.set(longPos)
             val chunk = chunks.at(pos) ?: continue
             val block = chunk.getBlockState(pos)
@@ -142,14 +144,15 @@ class GroupScan(
                 return
             }
 
+            val longPos = toVisitWeak.dequeueLong()
+            if (longPos in visited) continue
+
             tickIter++
             if (tickIter > scanPerTick) {
                 tickIter = 0
                 nextServerTick()
             }
 
-            val longPos = toVisitWeak.dequeueLong()
-            if (longPos in visited) continue
             pos.set(longPos)
             val chunk = chunks.at(pos) ?: continue
             val block = chunk.getBlockState(pos)
