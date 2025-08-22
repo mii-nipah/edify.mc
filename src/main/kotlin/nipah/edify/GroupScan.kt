@@ -13,6 +13,8 @@ class GroupScan(
     val chunks: ChunkAccess,
     private val limit: Int = 100_000,
     private val scanPerTick: Int = 10_000,
+    private val blocksPerFloatingSupports: Int = 3,
+    private val floatingSupportsNaturalIslandLimit: Int = 5_000,
 ) {
     private val toVisit = LongArrayFIFOQueue(50_000)
     private val toVisitWeak = LongArrayFIFOQueue(50_000)
@@ -70,6 +72,8 @@ class GroupScan(
 
         metaGroup.clear()
 
+        var floatingSupports = 0
+
         val pos = BlockPos.MutableBlockPos()
         while (toVisit.isNotEmpty() && isActive) {
             iter++
@@ -92,6 +96,12 @@ class GroupScan(
                 toVisitWeak.enqueue(longPos)
                 continue
             }
+            if (block.isFloating()) {
+                floatingSupports++
+                if (floatingSupports > floatingSupportsNaturalIslandLimit) {
+                    return@launch
+                }
+            }
             val inFoundation = inFoundation(pos)
             visited.add(longPos)
             if (inFoundation.not()) {
@@ -106,6 +116,12 @@ class GroupScan(
                 if (longPos in visited) return@forEachNeighborNoAlloc
                 toVisit.enqueue(longPos)
             }
+        }
+        val blocksPerSupport =
+            (metaGroup.size / blocksPerFloatingSupports.coerceAtLeast(1))
+                .coerceAtLeast(1)
+        if (floatingSupports >= blocksPerSupport) {
+            return@launch
         }
         mapGroupWeak(iter, tickIter)
         group.addAll(metaGroup)

@@ -9,6 +9,7 @@ import net.minecraft.world.level.block.Block
 import net.minecraft.world.level.block.Blocks
 import net.minecraft.world.level.block.SnowLayerBlock
 import net.minecraft.world.level.block.state.BlockState
+import nipah.edify.tags.ModTags
 
 fun BlockState.isOf(block: Block): Boolean {
     return this.`is`(block)
@@ -301,4 +302,8 @@ fun BlockState.isHeavy(): Boolean {
             || this.isOf(Blocks.GOLD_BLOCK)
             || this.isOf(Blocks.DIAMOND_BLOCK)
             || this.isOf(Blocks.EMERALD_BLOCK)
+}
+
+fun BlockState.isFloating(): Boolean {
+    return this.has(ModTags.floating)
 }
