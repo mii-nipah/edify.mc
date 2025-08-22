@@ -10,7 +10,6 @@ import net.minecraft.network.syncher.SynchedEntityData
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.entity.Entity
 import net.minecraft.world.entity.EntityType
-import net.minecraft.world.entity.MoverType
 import net.minecraft.world.level.Level
 import net.neoforged.neoforge.entity.IEntityWithComplexSpawn
 import net.neoforged.neoforge.network.PacketDistributor
@@ -20,9 +19,7 @@ import nipah.edify.network.FallingStructureBlockRemovedPacket
 import nipah.edify.palletes.BlockPalette
 import nipah.edify.types.WorldBlock
 import nipah.edify.types.to
-import nipah.edify.utils.minus
 import nipah.edify.utils.toCopyOnWriteArrayList
-import nipah.edify.utils.toVec3
 import org.joml.Quaternionf
 import java.util.concurrent.CopyOnWriteArrayList
 
@@ -41,7 +38,7 @@ class FallingStructureEntity(type: EntityType<FallingStructureEntity>, level: Le
     }
 
     init {
-        noPhysics = false
+        noPhysics = true
     }
 
     var origin: BlockPos
@@ -63,8 +60,9 @@ class FallingStructureEntity(type: EntityType<FallingStructureEntity>, level: Le
 
     fun syncData() {
         if (this.level().isClientSide) return
-        val deltaPos = data.pos.toVec3() - position()
-        move(MoverType.SELF, deltaPos)
+//        val deltaPos = data.pos.toVec3() - position()
+//        move(MoverType.SELF, deltaPos)
+        setPos(data.pos.x.toDouble(), data.pos.y.toDouble(), data.pos.z.toDouble())
         setDeltaMovement(data.vel.x.toDouble(), data.vel.y.toDouble(), data.vel.z.toDouble())
         entityData.set(ORIGIN, data.origin)
         entityData.set(ROTATION, data.rotation)
