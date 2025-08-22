@@ -28,14 +28,12 @@ class FallingStructureRenderer(val ctx: EntityRendererProvider.Context): EntityR
     override fun render(e: FallingStructureEntity, entityYaw: Float, partialTick: Float, poseStack: PoseStack, bufferSource: MultiBufferSource, packedLight: Int) {
         super.render(e, entityYaw, partialTick, poseStack, bufferSource, packedLight)
         val level = e.level()
-        val cam = ctx
 
         val rnd = RandomSource.create(42)
 
         val buf = bufferSource
 
         val pose = poseStack
-        pose.pushPose()
 
         val data = e.dataClient
 
@@ -45,66 +43,66 @@ class FallingStructureRenderer(val ctx: EntityRendererProvider.Context): EntityR
             val layer = ItemBlockRenderTypes.getChunkRenderType(state)
             val vc = buf.getBuffer(layer)
 
-            pose.pushPose()
-            val localPos = worldPos.subtract(origin)
-            pose.translate(localPos.x.toDouble(), localPos.y.toDouble(), localPos.z.toDouble())
+            pose.withPush {
+                val localPos = worldPos.subtract(origin)
+                pose.translate(localPos.x.toDouble(), localPos.y.toDouble(), localPos.z.toDouble())
 
-            disp.modelRenderer.tesselateBlock(
-                level,
-                disp.getBlockModel(state),
-                state,
-                worldPos,
-                pose,
-                vc,
-                true,
-                rnd,
-                state.getSeed(worldPos),
-                0,  // overlay
-                ModelData.EMPTY,
-                layer
-            )
-            pose.popPose()
+                disp.modelRenderer.tesselateBlock(
+                    level,
+                    disp.getBlockModel(state),
+                    state,
+                    worldPos,
+                    pose,
+                    vc,
+                    true,
+                    rnd,
+                    state.getSeed(worldPos),
+                    0,  // overlay
+                    ModelData.EMPTY,
+                    layer
+                )
+            }
         }
 
-        if (data.blocks.size < 500) {
-            pose.withPush {
-                pose.mulPose(data.rotation)
-                for ((worldPos, state) in data.blocks) {
+        pose.withPush {
+            if (data.blocks.size < 500) {
+                pose.withPush {
+                    pose.mulPose(data.rotation)
+                    for ((worldPos, state) in data.blocks) {
+                        drawBlock(data.origin, worldPos, state)
+                    }
+                }
+            }
+            else {
+                val vbo = data.vbo ?: return
+
+                RenderSystem.enableDepthTest()
+                RenderSystem.disableBlend()
+
+                val cam = Minecraft.getInstance().gameRenderer.mainCamera.position
+                val modelViewMatrix = RenderSystem.getModelViewMatrix()
+
+                val view = Matrix4f(modelViewMatrix)
+                    .translate(
+                        (data.pos.x - cam.x).toFloat(),
+                        (data.pos.y - cam.y).toFloat(),
+                        (data.pos.z - cam.z).toFloat()
+                    )
+                    .rotate(data.rotation)
+
+                RenderSystem.setShaderTexture(0, TextureAtlas.LOCATION_BLOCKS)
+                val shader = GameRenderer.getRendertypeCutoutShader() ?: run { pose.popPose(); return }
+
+                Minecraft.getInstance().gameRenderer.lightTexture().turnOnLightLayer()
+                vbo.bind()
+                vbo.drawWithShader(view, RenderSystem.getProjectionMatrix(), shader)
+                VertexBuffer.unbind()
+
+                for ((worldPos, state) in data.nonRenderable) {
                     drawBlock(data.origin, worldPos, state)
                 }
             }
         }
-        else {
-            val vbo = data.vbo ?: return
-
-            RenderSystem.enableDepthTest()
-            RenderSystem.disableBlend()
-
-            val cam = Minecraft.getInstance().gameRenderer.mainCamera.position
-            val modelViewMatrix = RenderSystem.getModelViewMatrix()
-
-            val view = Matrix4f(modelViewMatrix)
-                .translate(
-                    (data.pos.x - cam.x).toFloat(),
-                    (data.pos.y - cam.y).toFloat(),
-                    (data.pos.z - cam.z).toFloat()
-                )
-                .rotate(data.rotation)
-
-            RenderSystem.setShaderTexture(0, TextureAtlas.LOCATION_BLOCKS)
-            val shader = GameRenderer.getRendertypeCutoutShader() ?: run { pose.popPose(); return }
-
-            Minecraft.getInstance().gameRenderer.lightTexture().turnOnLightLayer()
-            vbo.bind()
-            vbo.drawWithShader(view, RenderSystem.getProjectionMatrix(), shader)
-            VertexBuffer.unbind()
-
-            for ((worldPos, state) in data.nonRenderable) {
-                drawBlock(data.origin, worldPos, state)
-            }
-        }
-
-        pose.popPose()
     }
 
     override fun shouldRender(e: FallingStructureEntity, camera: Frustum, camX: Double, camY: Double, camZ: Double): Boolean {
