@@ -12,16 +12,16 @@ import kotlin.coroutines.coroutineContext
 class GroupScan(
     val chunks: ChunkAccess,
     private val limit: Int = 100_000,
-    private val scanPerTick: Int = 10_000,
+    private val scanPerTick: Int = 1_000,
     private val blocksPerFloatingSupports: Int = 3,
     private val floatingSupportsNaturalIslandLimit: Int = 5_000,
 ) {
-    private val toVisit = LongArrayFIFOQueue(50_000)
-    private val toVisitWeak = LongArrayFIFOQueue(50_000)
-    private val visited = LongOpenHashSet(1_000_000)
-    private val group = LongOpenHashSet(300_000)
-    private val metaGroup = LongOpenHashSet(300_000)
-    private val metaGroupWeak = LongOpenHashSet(300_000)
+    private val toVisit = LongArrayFIFOQueue(limit / 2)
+    private val toVisitWeak = LongArrayFIFOQueue(limit / 2)
+    private val visited = LongOpenHashSet(limit * 5)
+    private val group = LongOpenHashSet(limit * 2)
+    private val metaGroup = LongOpenHashSet(limit * 2)
+    private val metaGroupWeak = LongOpenHashSet(limit * 2)
 
     fun clear() {
         toVisit.clear()
@@ -73,6 +73,7 @@ class GroupScan(
         metaGroup.clear()
 
         var floatingSupports = 0
+        var capturedBlocks = 0
 
         val pos = BlockPos.MutableBlockPos()
         while (toVisit.isNotEmpty() && isActive) {
@@ -100,6 +101,7 @@ class GroupScan(
             }
             if (block.isFloating()) {
                 floatingSupports++
+                capturedBlocks--
                 if (floatingSupports > floatingSupportsNaturalIslandLimit) {
                     return@launch
                 }
@@ -108,6 +110,7 @@ class GroupScan(
             visited.add(longPos)
             if (inFoundation.not()) {
                 metaGroup.add(longPos)
+                capturedBlocks++
             }
             else {
                 return@launch
@@ -120,7 +123,7 @@ class GroupScan(
             }
         }
         val blocksPerSupport =
-            (metaGroup.size / blocksPerFloatingSupports.coerceAtLeast(1))
+            (capturedBlocks / blocksPerFloatingSupports.coerceAtLeast(1))
                 .coerceAtLeast(1)
         if (floatingSupports >= blocksPerSupport) {
             return@launch

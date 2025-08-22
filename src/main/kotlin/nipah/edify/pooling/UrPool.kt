@@ -27,6 +27,11 @@ data class UrPool<T>(
         items.add(item)
     }
 
+    inline fun <R> borrowIn(block: (T) -> R): R {
+        val item = borrow()
+        return item.use { block(item.self) }
+    }
+
     private fun release(borrow: UrBorrow<T>) {
         val item = borrow.self
         items.add(item)

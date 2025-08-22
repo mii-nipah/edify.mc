@@ -11,10 +11,10 @@ import nipah.edify.utils.collectNeighborsWithCornersUpFirst
 
 object WorldData {
     val chunkData = mutableMapOf<ChunkPos, ChunkData>()
-    private val scans = mutableMapOf<Level, GroupScan>()
-    private fun getScan(level: Level): GroupScan {
+    private val scans = mutableMapOf<Level, GroupScanWorker>()
+    private fun getScanWorker(level: Level): GroupScanWorker {
         return scans.getOrPut(level) {
-            GroupScan(
+            GroupScanWorker(
                 ChunkAccess(level)
             )
         }
@@ -32,7 +32,7 @@ object WorldData {
             if (removed.isEmpty()) return@listenToBatchedBlockChanges
             onBlocksRemoved(
                 removed.map { it.second },
-                getScan(removed.first().first.level!!)
+                getScanWorker(removed.first().first.level!!)
             )
         }
     }
@@ -43,16 +43,16 @@ object WorldData {
         chunkData[chunkPos] = mapped
     }
 
-    private fun onBlocksRemoved(removed: List<BlockPos>, scan: GroupScan) = TickScheduler.serverScope.launch {
+    private fun onBlocksRemoved(removed: List<BlockPos>, scanWorker: GroupScanWorker) = TickScheduler.serverScope.launch {
         val removedArray = removed.toTypedArray()
         val seed = listOf(
             *removedArray,
             *removed.flatMap { it.collectNeighborsWithCornersUpFirst() }.toTypedArray()
         )
 
-        val toRemove = scan.scan(seed) ?: return@launch
+        val toRemove = scanWorker.scan(seed) ?: return@launch
 
-        fallingFun(scan.chunks, toRemove)
+        fallingFun(scanWorker.chunks, toRemove)
     }
 
     private fun fallingFun(chunks: ChunkAccess, fall: List<BlockPos>) {
