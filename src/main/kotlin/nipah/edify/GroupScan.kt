@@ -99,18 +99,19 @@ class GroupScan(
                 toVisitWeak.enqueue(longPos)
                 continue
             }
-            if (block.isFloating()) {
-                floatingSupports++
-                capturedBlocks--
-                if (floatingSupports > floatingSupportsNaturalIslandLimit) {
-                    return@launch
-                }
-            }
             val inFoundation = inFoundation(pos)
             visited.add(longPos)
             if (inFoundation.not()) {
                 metaGroup.add(longPos)
-                capturedBlocks++
+                if (block.isFloating()) {
+                    floatingSupports++
+                    if (floatingSupports > floatingSupportsNaturalIslandLimit) {
+                        return@launch
+                    }
+                }
+                else {
+                    capturedBlocks++
+                }
             }
             else {
                 return@launch
@@ -122,10 +123,7 @@ class GroupScan(
                 toVisit.enqueue(longPos)
             }
         }
-        val blocksPerSupport =
-            (capturedBlocks / blocksPerFloatingSupports.coerceAtLeast(1))
-                .coerceAtLeast(1)
-        if (floatingSupports >= blocksPerSupport) {
+        if (floatingSupports * blocksPerFloatingSupports >= capturedBlocks.coerceAtLeast(1)) {
             return@launch
         }
         mapGroupWeak(iter, tickIter)
