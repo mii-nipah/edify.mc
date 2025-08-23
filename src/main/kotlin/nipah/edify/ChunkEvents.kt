@@ -6,9 +6,9 @@ import net.minecraft.world.level.chunk.LevelChunk
 import net.neoforged.bus.api.SubscribeEvent
 import net.neoforged.neoforge.event.level.BlockEvent
 import net.neoforged.neoforge.event.level.ChunkEvent
-import net.neoforged.neoforge.event.level.ExplosionEvent
 import net.neoforged.neoforge.event.tick.ServerTickEvent
 import nipah.edify.client.render.BatchRenderer
+import nipah.edify.events.UniversalBlockEvent
 import nipah.edify.utils.TickScheduler
 
 object ChunkEvents {
@@ -79,16 +79,6 @@ object ChunkEvents {
     }
 
     @SubscribeEvent
-    fun onBlockBroken(e: BlockEvent.BreakEvent) {
-        val chunk = e.level.getChunk(e.pos).let {
-            e.level.chunkSource.getChunkNow(it.pos.x, it.pos.z)
-        } ?: return
-        val state = e.state
-        val chunkState = chunk.getBlockState(e.pos)
-        queued.add(Triple(chunk, e.pos, BlockChangeKind.Broken))
-    }
-
-    @SubscribeEvent
     fun onFallingBlockLands(e: BlockEvent.EntityPlaceEvent) {
         if (e.entity is FallingBlockEntity) {
             val ent = e.entity as FallingBlockEntity
@@ -102,18 +92,30 @@ object ChunkEvents {
     }
 
     @SubscribeEvent
-    fun onExplosion(e: ExplosionEvent.Detonate) {
-        val blocks = e.affectedBlocks
+    fun onRemoveBatch(e: UniversalBlockEvent.BlockRemovedBatch) {
+        var blocks = e.blocks
         if (blocks.isEmpty()) return
-        val onePercentileCount = (blocks.size * 0.01).toInt().let {
-            if (it < 1) 1 else it
+        if (blocks.size > 30) {
+            val percentile = when (blocks.size) {
+                in 31..100 -> 0.5
+                in 101..300 -> 0.3
+                in 301..500 -> 0.15
+                in 501..700 -> 0.1
+                else -> 0.05
+            }
+            val percentileCount = (blocks.size * percentile).toInt().let {
+                if (it < 1) 1 else it
+            }
+            val randomBlocks = blocks.asList().shuffled().take(percentileCount)
+            blocks = randomBlocks.toLongArray()
         }
-        val randomBlocks = blocks.shuffled().take(onePercentileCount)
-        for (block in randomBlocks) {
-            val chunk = e.level.getChunk(block).let {
+
+        for (block in blocks) {
+            val pos = BlockPos.of(block)
+            val chunk = e.level.getChunk(pos).let {
                 e.level.chunkSource.getChunkNow(it.pos.x, it.pos.z)
             } ?: continue
-            queued.add(Triple(chunk, block, BlockChangeKind.Broken))
+            queued.add(Triple(chunk, pos, BlockChangeKind.Broken))
         }
     }
 }

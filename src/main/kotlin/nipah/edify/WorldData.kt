@@ -8,6 +8,7 @@ import net.minecraft.world.level.chunk.LevelChunk
 import nipah.edify.client.render.createBatch
 import nipah.edify.utils.TickScheduler
 import nipah.edify.utils.collectNeighborsWithCornersUpFirst
+import nipah.edify.utils.preventNextUniversalEventFromRemovingBlock
 
 object WorldData {
     val chunkData = mutableMapOf<ChunkPos, ChunkData>()
@@ -71,6 +72,7 @@ object WorldData {
             if (block.isAir || block.isEmpty) {
                 continue
             }
+            level.preventNextUniversalEventFromRemovingBlock()
             level.destroyBlock(bpos, false)
         }
     }
