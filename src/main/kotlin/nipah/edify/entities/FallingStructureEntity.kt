@@ -69,9 +69,14 @@ class FallingStructureEntity(type: EntityType<FallingStructureEntity>, level: Le
         boundingBox = data.aabb
     }
 
+    private var serverTicks = 0
     override fun tick() {
-        if (this.level().isClientSide) return
         super.tick()
+        if (this.level().isClientSide) return
+        serverTicks++
+        if (serverTicks < 5) {
+            return
+        }
         data.tick()
         val removedBlocks = data.tickServer(level() as ServerLevel)
         if (removedBlocks.isNotEmpty()) {
