@@ -35,6 +35,27 @@ fun AABB.betweenClosedBlocks(): Iterable<BlockPos> {
     return BlockPos.betweenClosed(minX, minY, minZ, maxX, maxY, maxZ)
 }
 
+inline fun AABB.betweenClosedBlocksNoAlloc(
+    action: (pos: BlockPos) -> Unit,
+) {
+    val minX = minX.toInt()
+    val minY = minY.toInt()
+    val minZ = minZ.toInt()
+    val maxX = maxX.toInt()
+    val maxY = maxY.toInt()
+    val maxZ = maxZ.toInt()
+
+    val pos = BlockPos.MutableBlockPos()
+    for (x in minX..maxX) {
+        for (y in minY..maxY) {
+            for (z in minZ..maxZ) {
+                pos.set(x, y, z)
+                action(pos)
+            }
+        }
+    }
+}
+
 fun AABB.rotate(
     rotation: Quaternionf,
     pivotWorld: Vector3f? = null,

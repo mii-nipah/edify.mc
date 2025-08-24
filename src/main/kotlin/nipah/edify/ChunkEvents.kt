@@ -4,6 +4,7 @@ import net.minecraft.core.BlockPos
 import net.minecraft.world.entity.item.FallingBlockEntity
 import net.minecraft.world.level.chunk.LevelChunk
 import net.neoforged.bus.api.SubscribeEvent
+import net.neoforged.neoforge.client.event.RenderGuiLayerEvent
 import net.neoforged.neoforge.event.level.BlockEvent
 import net.neoforged.neoforge.event.level.ChunkEvent
 import net.neoforged.neoforge.event.tick.ServerTickEvent
@@ -44,20 +45,39 @@ object ChunkEvents {
     private var serverTicks = 0
 
     @SubscribeEvent
+    fun onHud(e: RenderGuiLayerEvent.Post) {
+        // Draw after a vanilla layer; HOTBAR is a good anchor
+        val gg = e.guiGraphics
+        val mc = net.minecraft.client.Minecraft.getInstance()
+        val font = mc.font
+        // text
+        var i = 0
+        for (scan in GroupScan.currentlyScanning.distinct()) {
+            val id = scan.hashCode()
+
+            gg.drawString(font, "Scan#$id [ACTIVE]", 10, 30 + i * 10, 0xFFFFFFFF.toInt())
+
+            i++
+        }
+    }
+
+    @SubscribeEvent
     fun onServerTick(ev: ServerTickEvent.Post) {
-        if (queued.isEmpty().not()) {
-            for (cp in queued) {
-                // Notify batched listeners
-                val batch = queued.toList()
-                for (batchedListener in batchedListeners) {
-                    batchedListener(batch)
+        if (serverTicks % 5 == 0) {
+            if (queued.isEmpty().not()) {
+                for (cp in queued) {
+                    // Notify batched listeners
+                    val batch = queued.toList()
+                    for (batchedListener in batchedListeners) {
+                        batchedListener(batch)
+                    }
+                    // Notify listeners
+                    for (listener in listeners) {
+                        listener(cp.first, cp.second, cp.third)
+                    }
                 }
-                // Notify listeners
-                for (listener in listeners) {
-                    listener(cp.first, cp.second, cp.third)
-                }
+                queued.clear()
             }
-            queued.clear()
         }
 
         serverTicks++
@@ -97,11 +117,12 @@ object ChunkEvents {
         if (blocks.isEmpty()) return
         if (blocks.size > 30) {
             val percentile = when (blocks.size) {
-                in 31..100 -> 0.5
-                in 101..300 -> 0.3
-                in 301..500 -> 0.15
-                in 501..700 -> 0.1
-                else -> 0.05
+                in 31..50 -> 0.5
+                in 51..100 -> 0.3
+                in 101..150 -> 0.15
+                in 151..300 -> 0.1
+                in 301..500 -> 0.05
+                else -> 0.01
             }
             val percentileCount = (blocks.size * percentile).toInt().let {
                 if (it < 1) 1 else it

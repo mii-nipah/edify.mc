@@ -1,5 +1,6 @@
 package nipah.edify
 
+import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap
 import kotlinx.coroutines.launch
 import net.minecraft.core.BlockPos
 import net.minecraft.world.level.ChunkPos
@@ -11,7 +12,7 @@ import nipah.edify.utils.collectNeighborsWithCornersUpFirst
 import nipah.edify.utils.preventNextUniversalEventFromRemovingBlock
 
 object WorldData {
-    val chunkData = mutableMapOf<ChunkPos, ChunkData>()
+    val chunkData = Long2ObjectOpenHashMap<ChunkData>()
     private val scans = mutableMapOf<Level, GroupScanWorker>()
     private fun getScanWorker(level: Level): GroupScanWorker {
         return scans.getOrPut(level) {
@@ -41,7 +42,7 @@ object WorldData {
     fun mapChunk(chunk: LevelChunk) {
         val chunkPos = chunk.pos
         val mapped = ChunkData(chunkPos, chunk)
-        chunkData[chunkPos] = mapped
+        chunkData[chunkPos.toLong()] = mapped
     }
 
     private fun onBlocksRemoved(removed: List<BlockPos>, scanWorker: GroupScanWorker) = TickScheduler.serverScope.launch {
@@ -78,6 +79,6 @@ object WorldData {
     }
 
     fun unloadChunkData(chunkPos: ChunkPos) {
-        chunkData.remove(chunkPos)
+        chunkData.remove(chunkPos.toLong())
     }
 }

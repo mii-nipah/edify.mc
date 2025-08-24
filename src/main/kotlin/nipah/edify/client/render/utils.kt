@@ -6,7 +6,6 @@ import nipah.edify.entities.ModEntities
 import nipah.edify.spatial.SparseSpatialGrid
 import nipah.edify.types.BlockWeight
 import nipah.edify.types.to
-import nipah.edify.utils.toCopyOnWriteArrayList
 import nipah.edify.utils.toVec3f
 import org.joml.Quaternionf
 import org.joml.Vector3f
@@ -58,7 +57,7 @@ fun createBatch(
         totalWeight = totalWeight,
         foot = lowestFootPos.toVec3f(),
         rotation = Quaternionf(),
-        blocks = computedBlocks.toCopyOnWriteArrayList(),
+        blocks = computedBlocks.toMutableList(),
         space = space,
         levelKey = level.dimension()
     )

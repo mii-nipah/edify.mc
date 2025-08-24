@@ -4,6 +4,12 @@
   "minVersion": "0.8",
   "compatibilityLevel": "JAVA_21",
   "mixins": [
+    "BaseFireBlock_CauseMixin",
+    "EatBlockGoal_CauseMixin",
+    "FallingBlockEntity_CauseMixin",
+    "FireBlock_CauseMixin",
+    "FlowingFluid_CauseMixin",
+    "LeavesBlock_CauseMixin",
     "Level_AnyBlockRemovedMixin"
   ],
   "client": [],

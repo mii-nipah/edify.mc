@@ -17,7 +17,7 @@ class ChunkData(val chunkPos: ChunkPos, chunk: LevelChunk) {
     )
 
     fun foundationAt(x: Int, y: Int, z: Int): Boolean {
-        return foundation.boundedGet(x, safeY(y), z) == 1
+        return foundation.boundedContainsValue(x, safeY(y), z, 1)
     }
 
     fun setFoundationAt(x: Int, y: Int, z: Int, value: Boolean) {

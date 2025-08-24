@@ -29,12 +29,13 @@ class IntArray3d(
     }
 
     fun boundedGet(x: Int, y: Int, z: Int): Int? {
-        return if (x in 0 until sizeX && y in 0 until sizeY && z in 0 until sizeZ) {
-            data[index(x, y, z)]
-        }
-        else {
-            null
-        }
+        if ((x or y or z or (sizeX - 1 - x) or (sizeY - 1 - y) or (sizeZ - 1 - z)) < 0) return null
+        return data[index(x, y, z)]
+    }
+
+    fun boundedContainsValue(x: Int, y: Int, z: Int, value: Int): Boolean {
+        if ((x or y or z or (sizeX - 1 - x) or (sizeY - 1 - y) or (sizeZ - 1 - z)) < 0) return false
+        return data[index(x, y, z)] == value
     }
 
     override fun serializeNBT(p0: HolderLookup.Provider): @UnknownNullability CompoundTag {

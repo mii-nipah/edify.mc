@@ -1,5 +1,6 @@
 package nipah.edify.utils
 
+import it.unimi.dsi.fastutil.ints.Int2BooleanOpenHashMap
 import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
 import net.minecraft.tags.BlockTags
@@ -45,26 +46,38 @@ inline fun BlockPos.forEachNeighborTopBottom(func: (BlockPos) -> Unit) {
 }
 
 inline fun BlockPos.forEachNeighborNoAlloc(func: (BlockPos) -> Unit) {
-    val pos = asLong()
-    val north = BlockPos.offset(pos, Direction.NORTH)
-    val south = BlockPos.offset(pos, Direction.SOUTH)
-    val east = BlockPos.offset(pos, Direction.EAST)
-    val west = BlockPos.offset(pos, Direction.WEST)
-    val above = BlockPos.offset(pos, Direction.UP)
-    val below = BlockPos.offset(pos, Direction.DOWN)
     val mutPos = BlockPos.MutableBlockPos()
-    mutPos.set(north)
-    func(mutPos)
-    mutPos.set(south)
-    func(mutPos)
-    mutPos.set(east)
-    func(mutPos)
-    mutPos.set(west)
-    func(mutPos)
-    mutPos.set(above)
-    func(mutPos)
-    mutPos.set(below)
-    func(mutPos)
+    forEachNeighborNoAlloc(mutPos, func)
+}
+
+fun test() {
+    val pos = BlockPos(0, 0, 0)
+    val mutPos = BlockPos.MutableBlockPos()
+    pos.forEachNeighborNoAlloc(mutPos) { npos ->
+        println(npos)
+    }
+}
+
+inline fun BlockPos.forEachNeighborNoAlloc(
+    with: BlockPos.MutableBlockPos,
+    func: (BlockPos) -> Unit,
+) {
+    val x = this.x
+    val y = this.y
+    val z = this.z
+
+    with.set(x, y + 1, z)
+    func(with)
+    with.set(x, y, z - 1)
+    func(with)
+    with.set(x, y, z + 1)
+    func(with)
+    with.set(x + 1, y, z)
+    func(with)
+    with.set(x - 1, y, z)
+    func(with)
+    with.set(x, y - 1, z)
+    func(with)
 }
 
 inline fun BlockPos.findNeighbor(func: (BlockPos) -> Boolean): BlockPos? {
@@ -196,8 +209,12 @@ fun BlockState.holdsNoHeight(level: LevelReader, pos: BlockPos): Boolean {
     return false
 }
 
+private val logLikeCache = Int2BooleanOpenHashMap(1024)
 fun BlockState.isLogLike(): Boolean {
-    return hasAny(
+    val id = Block.getId(this)
+    if (logLikeCache.containsKey(id))
+        return logLikeCache.getOrDefault(id, false)
+    val result = hasAny(
         BlockTags.LOGS,
         BlockTags.LOGS_THAT_BURN,
         BlockTags.OAK_LOGS,
@@ -210,6 +227,8 @@ fun BlockState.isLogLike(): Boolean {
         BlockTags.MANGROVE_LOGS,
         BlockTags.OVERWORLD_NATURAL_LOGS,
     )
+    logLikeCache.put(id, result)
+    return result
 }
 
 fun BlockState.isPlankLike(): Boolean {
@@ -218,36 +237,54 @@ fun BlockState.isPlankLike(): Boolean {
     )
 }
 
+private val stoneLikeCache = Int2BooleanOpenHashMap(1024)
 fun BlockState.isStoneLike(): Boolean {
-    val inTags = hasAny(
-        BlockTags.STONE_BRICKS,
-        BlockTags.NEEDS_STONE_TOOL,
-        BlockTags.STONE_ORE_REPLACEABLES,
-        BlockTags.REDSTONE_ORES,
-        BlockTags.BASE_STONE_OVERWORLD,
-        BlockTags.BASE_STONE_NETHER,
-    )
-    if (inTags) return true
-    return this.isOf(Blocks.COBBLESTONE)
-            || this.isOf(Blocks.MOSSY_COBBLESTONE)
-            || this.isOf(Blocks.GRANITE)
-            || this.isOf(Blocks.DIORITE)
-            || this.isOf(Blocks.ANDESITE)
-            || this.isOf(Blocks.TUFF)
-            || this.isOf(Blocks.DRIPSTONE_BLOCK)
+    val id = Block.getId(this)
+    if (stoneLikeCache.containsKey(id))
+        return stoneLikeCache.getOrDefault(id, false);
+    val result = run {
+        val inTags = hasAny(
+            BlockTags.STONE_BRICKS,
+            BlockTags.NEEDS_STONE_TOOL,
+            BlockTags.STONE_ORE_REPLACEABLES,
+            BlockTags.REDSTONE_ORES,
+            BlockTags.BASE_STONE_OVERWORLD,
+            BlockTags.BASE_STONE_NETHER,
+        )
+        if (inTags) return@run true
+        return@run this.isOf(Blocks.COBBLESTONE)
+                || this.isOf(Blocks.MOSSY_COBBLESTONE)
+                || this.isOf(Blocks.GRANITE)
+                || this.isOf(Blocks.DIORITE)
+                || this.isOf(Blocks.ANDESITE)
+                || this.isOf(Blocks.TUFF)
+                || this.isOf(Blocks.DRIPSTONE_BLOCK)
+    }
+    stoneLikeCache.put(id, result)
+    return result
 }
 
+private val dirtLikeCache = Int2BooleanOpenHashMap(1024)
 fun BlockState.isDirtLike(): Boolean {
-    return hasAny(
+    val id = Block.getId(this)
+    if (dirtLikeCache.containsKey(id))
+        return dirtLikeCache.getOrDefault(id, false);
+    val result = hasAny(
         BlockTags.DIRT,
         BlockTags.SAND,
         BlockTags.NYLIUM,
         BlockTags.CONVERTABLE_TO_MUD,
     )
+    dirtLikeCache.put(id, result)
+    return result
 }
 
+private val nonSupportingCache = Int2BooleanOpenHashMap(1024)
 fun BlockState.isNonSupporting(): Boolean {
-    return hasAny(
+    val id = Block.getId(this)
+    if (nonSupportingCache.containsKey(id))
+        return nonSupportingCache.getOrDefault(id, false);
+    val result = hasAny(
         BlockTags.BUTTONS,
         BlockTags.FENCES,
         BlockTags.WALLS,
@@ -275,18 +312,28 @@ fun BlockState.isNonSupporting(): Boolean {
         BlockTags.SNOW,
         BlockTags.LEAVES,
     )
+    nonSupportingCache.put(id, result)
+    return result
 }
 
+private val explosiveCache = Int2BooleanOpenHashMap(1024)
 fun BlockState.isExplosive(): Boolean {
-    val tagged = hasAny(
-        BlockTags.FIRE,
-        BlockTags.CAMPFIRES,
-        BlockTags.SOUL_FIRE_BASE_BLOCKS,
-    )
-    if (tagged) return true
-    return this.isOf(Blocks.TNT)
-            || this.isOf(Blocks.CREEPER_HEAD)
-            || this.isOf(Blocks.CREEPER_WALL_HEAD)
+    val id = Block.getId(this)
+    if (explosiveCache.containsKey(id))
+        return explosiveCache.getOrDefault(id, false);
+    val result = run {
+        val tagged = hasAny(
+            BlockTags.FIRE,
+            BlockTags.CAMPFIRES,
+            BlockTags.SOUL_FIRE_BASE_BLOCKS,
+        )
+        if (tagged) return@run true
+        return@run this.isOf(Blocks.TNT)
+                || this.isOf(Blocks.CREEPER_HEAD)
+                || this.isOf(Blocks.CREEPER_WALL_HEAD)
+    }
+    explosiveCache.put(id, result)
+    return result
 }
 
 fun BlockState.isHeavy(): Boolean {
@@ -304,6 +351,12 @@ fun BlockState.isHeavy(): Boolean {
             || this.isOf(Blocks.EMERALD_BLOCK)
 }
 
+private val floatingCache = Int2BooleanOpenHashMap(1024)
 fun BlockState.isFloating(): Boolean {
-    return this.has(ModTags.floating)
+    val id = Block.getId(this)
+    if (floatingCache.containsKey(id))
+        return floatingCache.getOrDefault(id, false);
+    val result = this.has(ModTags.floating)
+    floatingCache.put(id, result)
+    return result
 }

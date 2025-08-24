@@ -1,6 +1,7 @@
 package nipah.edify.client.render
 
 import it.unimi.dsi.fastutil.longs.LongArrayList
+import it.unimi.dsi.fastutil.longs.LongOpenHashSet
 import net.minecraft.core.BlockPos
 import net.minecraft.core.particles.ParticleTypes
 import net.minecraft.resources.ResourceKey
@@ -18,6 +19,7 @@ import org.joml.Quaternionf
 import org.joml.Vector3f
 import java.util.concurrent.CopyOnWriteArrayList
 import kotlin.math.absoluteValue
+import kotlin.math.sqrt
 import kotlin.random.Random
 
 class FallingBatch(
@@ -30,9 +32,10 @@ class FallingBatch(
     var totalWeight: Float,
     val gravity: Float = vel.y.absoluteValue,
     val travelled: Float = 0f,
-    val blocks: CopyOnWriteArrayList<WorldBlock>,
+    val blocks: MutableList<WorldBlock>,
     val space: SparseSpatialGrid,
     val levelKey: ResourceKey<Level>,
+    val tickCollisions: LongOpenHashSet = LongOpenHashSet(10_000),
 ) {
     companion object {
         fun computeAabb(
@@ -109,9 +112,8 @@ class FallingBatch(
     }
 
     fun tickServer(level: ServerLevel): LongArrayList {
-        val voxels = level.getBlockCollisions(null, aabb)
-            .flatMap { it.bounds().betweenClosedBlocks() }
-            .distinct()
+        tickCollisions.clear()
+        level.getBlockCollisionsOptimized(aabb, tickCollisions)
         val entities = level.getEntities(null, aabb)
 
         val allRemovedBlocks = LongArrayList()
@@ -153,9 +155,11 @@ class FallingBatch(
         var moves = 0
         var collisionWeight = 0f
         val toRemove = mutableListOf<WorldBlock>()
-        if (voxels.any()) {
-            val cells = voxels
-                .map { voxel ->
+        if (tickCollisions.any()) {
+            val voxel = BlockPos.MutableBlockPos()
+            val cells = tickCollisions
+                .map { longVoxel ->
+                    voxel.set(longVoxel)
                     val voxelInOrigin = voxel.subtract(
                         pos.toVec3i() - origin.toVec3i()
                     )
@@ -222,7 +226,13 @@ class FallingBatch(
                         if (Random.nextChance(worldBlockStr.willExplode)) {
                             val intensity = blockStr.intensity(blockW)
                             // spawn explosion
-                            level.explode(null, movedBlockPos.x + 0.5, movedBlockPos.y + 0.5, movedBlockPos.z + 0.5, intensity, Level.ExplosionInteraction.BLOCK)
+                            level.lightweightExplode(
+                                movedBlockPos.x + 0.5,
+                                movedBlockPos.y + 0.5,
+                                movedBlockPos.z + 0.5,
+                                sqrt(intensity / 2f).coerceAtLeast(1f),
+                                intensity
+                            )
                             moveUp += 0.1f
                             moves++
                         }
@@ -241,7 +251,13 @@ class FallingBatch(
                         val blockW = BlockWeight.of(block)
                         val intensity = blockStr.intensity(blockW) * travelledFactor
                         // spawn explosion
-                        level.explode(null, movedBlockPos.x + 0.5, movedBlockPos.y + 0.5, movedBlockPos.z + 0.5, intensity, Level.ExplosionInteraction.BLOCK)
+                        level.lightweightExplode(
+                            movedBlockPos.x + 0.5,
+                            movedBlockPos.y + 0.5,
+                            movedBlockPos.z + 0.5,
+                            sqrt(intensity / 2f).coerceAtLeast(1f),
+                            intensity
+                        )
                         toRemove.add(blockPair)
                         totalWeight -= blockW.value
                         invalidate()
@@ -272,10 +288,10 @@ class FallingBatch(
                 .mapNotNull { cellKey -> space.get(cellKey) }
             val closest = run {
                 var closest: WorldBlock? = null
-                var closestDist = Int.MAX_VALUE
+                var closestDist = Double.MAX_VALUE
                 for (cell in closestCells) {
                     for (blockPair in cell) {
-                        val dist = blockPair.pos.distManhattan(eposInOrigin)
+                        val dist = blockPair.pos.distSqr(eposInOrigin)
                         if (dist < closestDist) {
                             closestDist = dist
                             closest = blockPair
