@@ -8,6 +8,7 @@ import net.neoforged.fml.event.lifecycle.FMLClientSetupEvent
 import net.neoforged.fml.event.lifecycle.FMLCommonSetupEvent
 import net.neoforged.fml.event.lifecycle.FMLDedicatedServerSetupEvent
 import net.neoforged.neoforge.common.NeoForge
+import nipah.edify.attachment.ModAttachments
 import nipah.edify.block.ModBlocks
 import nipah.edify.entities.ModEntities
 import nipah.edify.utils.TickScheduler
@@ -36,6 +37,7 @@ object Edify {
         // Register the KDeferredRegister to the mod-specific event bus
         ModBlocks.REGISTRY.register(MOD_BUS)
         ModEntities.REGISTRY.register(MOD_BUS)
+        ModAttachments.REGISTRY.register(MOD_BUS)
         NeoForge.EVENT_BUS.register(TickScheduler)
         NeoForge.EVENT_BUS.register(ChunkEvents)
 //        WorldData.groupAt(BlockPos.ZERO)

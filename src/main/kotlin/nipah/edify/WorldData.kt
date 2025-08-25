@@ -6,6 +6,11 @@ import net.minecraft.core.BlockPos
 import net.minecraft.world.level.ChunkPos
 import net.minecraft.world.level.Level
 import net.minecraft.world.level.chunk.LevelChunk
+import nipah.edify.block.DebrisBlock
+import nipah.edify.chunks.ChunkDebris
+import nipah.edify.chunks.getDebrisStateAt
+import nipah.edify.chunks.removeDebrisData
+import nipah.edify.chunks.setDebrisAt
 import nipah.edify.client.render.createBatch
 import nipah.edify.utils.TickScheduler
 import nipah.edify.utils.collectNeighborsWithCornersUpFirst
@@ -67,14 +72,35 @@ object WorldData {
             fall
         )
 
+        data class DebrisToMove(
+            val pos: BlockPos,
+            val entry: ChunkDebris.Entry,
+        )
+
+        val debrisToMove = mutableListOf<DebrisToMove>()
+
         for (bpos in fall) {
             val chunk = chunks.at(bpos) ?: continue
             val block = chunk.getBlockState(bpos)
             if (block.isAir || block.isEmpty) {
                 continue
             }
+
+            if (block.block is DebrisBlock) {
+                val entry = level.getDebrisStateAt(bpos)
+                if (entry != null) {
+                    level.removeDebrisData(bpos)
+                    debrisToMove.add(DebrisToMove(bpos, entry))
+                }
+            }
+
             level.preventNextUniversalEventFromRemovingBlock()
             level.destroyBlock(bpos, false)
+        }
+        for ((pos, debris) in debrisToMove) {
+            for (state in debris.toBlockStateList()) {
+                level.setDebrisAt(pos, state)
+            }
         }
     }
 

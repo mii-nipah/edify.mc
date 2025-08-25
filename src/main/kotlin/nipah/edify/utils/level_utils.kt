@@ -9,7 +9,11 @@ import net.minecraft.sounds.SoundSource
 import net.minecraft.world.level.Level
 import net.minecraft.world.level.block.Blocks
 import net.minecraft.world.level.block.LiquidBlock
+import net.minecraft.world.level.block.state.BlockState
 import net.minecraft.world.phys.AABB
+import nipah.edify.block.DebrisBlock
+import nipah.edify.chunks.removeDebrisData
+import nipah.edify.chunks.setDebrisAt
 import nipah.edify.levels.setBlockRegion
 import nipah.edify.mixin_runtime.Level_AnyBlockRemovedMixinRuntime
 import kotlin.math.sqrt
@@ -62,7 +66,20 @@ fun ServerLevel.lightweightExplode(
                             continue
                         }
 
+                        if (block is DebrisBlock) {
+                            if (Random.nextChance(0.3f)) {
+                                removeDebrisData(pos)
+                                setBlockNeverNotify(pos, Blocks.AIR.defaultBlockState())
+                                continue
+                            }
+                            setDebrisAt(pos, state)
+                            continue
+                        }
+
                         setBlockNeverNotify(pos, Blocks.AIR.defaultBlockState())
+                        if (Random.nextChance(powerToResistanceRatio)) {
+                            setDebrisAt(pos, state)
+                        }
                     }
                 }
             }
@@ -89,6 +106,104 @@ fun Level.getBlockCollisionsOptimized(aabb: AABB, collisions: LongOpenHashSet) {
         val bounds = voxel.bounds()
         bounds.betweenClosedBlocksNoAlloc { pos ->
             collisions.add(pos.asLong())
+        }
+    }
+}
+
+inline fun Level.blockcastRay(
+    start: BlockPos,
+    direction: BlockPos,
+    length: Int,
+    step: Int = 10,
+    stopCondition: (BlockPos) -> Boolean = { pos -> getBlockState(pos).isAir.not() },
+): BlockPos? {
+    val end = start.offset(direction.x * length, direction.y * length, direction.z * length)
+    return blockcastLine(start, end, step, stopCondition)
+}
+
+inline fun Level.blockcastLine(
+    start: BlockPos,
+    end: BlockPos,
+    step: Int = 10,
+    stopCondition: (BlockPos) -> Boolean = { pos -> getBlockState(pos).isAir.not() },
+): BlockPos? {
+    val deltaX = (end.x - start.x).toDouble()
+    val deltaY = (end.y - start.y).toDouble()
+    val deltaZ = (end.z - start.z).toDouble()
+    val length = sqrt(deltaX * deltaX + deltaY * deltaY + deltaZ * deltaZ)
+    if (length == 0.0) return null
+    val stepX = deltaX / length * step
+    val stepY = deltaY / length * step
+    val stepZ = deltaZ / length * step
+
+    val pos = BlockPos.MutableBlockPos()
+    var currentX = start.x.toDouble()
+    var currentY = start.y.toDouble()
+    var currentZ = start.z.toDouble()
+    var traveled = 0.0
+    while (traveled <= length) {
+        pos.set(currentX.toInt(), currentY.toInt(), currentZ.toInt())
+        if (stopCondition(pos)) {
+            return pos
+        }
+        currentX += stepX
+        currentY += stepY
+        currentZ += stepZ
+        traveled += step
+    }
+    return null
+}
+
+fun Level.setBlockInTheFirstFreePos(
+    pos: BlockPos,
+    state: BlockState,
+    limit: Int = 100,
+) {
+    val mutPos = pos.mutable()
+    var iter = 0
+    while (true) {
+        iter++
+        if (iter > limit) {
+            return
+        }
+        val curState = getBlockState(mutPos)
+
+        fun checkAndPlace(at: BlockPos): Boolean {
+            val to = getBlockState(at)
+            if (to.isAir || to.isEmpty || to.block is LiquidBlock) {
+                setBlockAndUpdate(at, state)
+                return true
+            }
+            return false
+        }
+
+        if (checkAndPlace(mutPos)) {
+            return
+        }
+        val ogX = mutPos.x
+        val ogY = mutPos.y
+        val ogZ = mutPos.z
+        mutPos.forEachNeighborNoAlloc(mutPos) { npos ->
+            if (checkAndPlace(npos)) {
+                return
+            }
+        }
+        mutPos.set(ogX, ogY, ogZ)
+        mutPos.move(0, 1, 0)
+        if (mutPos.y > this.maxBuildHeight) {
+            mutPos.set(mutPos.x, pos.y, mutPos.z)
+            if (Random.nextChance(0.5f)) {
+                mutPos.move(1, 0, 0)
+            }
+            else {
+                mutPos.move(-1, 0, 0)
+            }
+            if (Random.nextChance(0.5f)) {
+                mutPos.move(0, 0, 1)
+            }
+            else {
+                mutPos.move(0, 0, -1)
+            }
         }
     }
 }

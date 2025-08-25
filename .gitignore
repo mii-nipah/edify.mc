@@ -13,6 +13,9 @@ out/
 # JIRA plugin
 atlassian-ide-plugin.xml
 
+# datagen
+src/generated/resources/.cache/**
+
 # Compiled class file
 *.class
 

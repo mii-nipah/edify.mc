@@ -1,19 +1,17 @@
 package nipah.edify.block
 
-import nipah.edify.Edify
-import net.minecraft.world.level.block.Block
+// THIS LINE IS REQUIRED FOR USING PROPERTY DELEGATES
 import net.minecraft.world.level.block.state.BlockBehaviour
 import net.neoforged.neoforge.registries.DeferredRegister
 import nipah.edify.modId
-
-// THIS LINE IS REQUIRED FOR USING PROPERTY DELEGATES
 import thedarkcolour.kotlinforforge.neoforge.forge.getValue
 
 object ModBlocks {
     val REGISTRY = DeferredRegister.createBlocks(modId)
 
-    // If you get an "overload resolution ambiguity" error, include the arrow at the start of the closure.
-//    val EXAMPLE_BLOCK by REGISTRY.register("example_block") { ->
-//        Block(BlockBehaviour.Properties.of().lightLevel { 15 }.strength(3.0f))
-//    }
+    val debris by REGISTRY.register("debris") { ->
+        DebrisBlock(
+            BlockBehaviour.Properties.of()
+        )
+    }
 }

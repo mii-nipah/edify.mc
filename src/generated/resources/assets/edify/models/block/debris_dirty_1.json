@@ -1,0 +1,6 @@
+{
+  "parent": "edify:block/debris_layer1_geo",
+  "textures": {
+    "tex": "edify:block/debris_dirty"
+  }
+}

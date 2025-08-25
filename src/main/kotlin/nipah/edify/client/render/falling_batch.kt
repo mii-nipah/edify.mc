@@ -7,9 +7,10 @@ import net.minecraft.core.particles.ParticleTypes
 import net.minecraft.resources.ResourceKey
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.level.Level
-import net.minecraft.world.level.block.Block
 import net.minecraft.world.level.block.state.BlockState
 import net.minecraft.world.phys.AABB
+import nipah.edify.block.DebrisBlock
+import nipah.edify.chunks.setDebrisAt
 import nipah.edify.spatial.SparseSpatialGrid
 import nipah.edify.types.BlockStrength
 import nipah.edify.types.BlockWeight
@@ -142,13 +143,9 @@ class FallingBatch(
             )
         }
 
-        fun spawnBlockItem(pos: BlockPos, block: BlockState) {
+        fun spawnDebris(pos: BlockPos, block: BlockState) {
             spawnSmoke(pos)
-            Block.dropResources(
-                block,
-                level,
-                pos
-            )
+            level.setDebrisAt(pos, block)
         }
 
         var moveUp = 0f
@@ -179,6 +176,11 @@ class FallingBatch(
                     val travelledFactor = 1 - (1f / originalBlockPos.distManhattan(movedBlockPos))
                     val worldBlock = level.getBlockState(movedBlockPos)
                     if (worldBlock.isAir || worldBlock.isEmpty) continue
+                    if (block.block is DebrisBlock) {
+                        toRemove.add(blockPair)
+                        totalWeight -= BlockWeight.of(block).value
+                        continue
+                    }
 
                     val blockStr = BlockStrength.of(block)
                     val worldBlockStr = BlockStrength.of(worldBlock)
@@ -189,7 +191,7 @@ class FallingBatch(
                     collisionWeight += blockW.value
 
                     if (Random.nextChance(blockStr.willPut)) {
-                        level.setBlockAndUpdate(movedBlockPos.above(), block)
+                        level.setBlockInTheFirstFreePos(movedBlockPos, block)
                         toRemove.add(blockPair)
                         totalWeight -= blockW.value
                         level.sendParticlesAt(
@@ -205,7 +207,7 @@ class FallingBatch(
                     var somethingBreaking = false
                     var selfBreaking = false
                     if (Random.nextChance(blockStr.willBreak * (1f - worldBlockStr.willBreak))) {
-                        spawnBlockItem(movedBlockPos, block)
+                        spawnDebris(movedBlockPos, block)
                         toRemove.add(blockPair)
                         totalWeight -= blockW.value
                         invalidate()
@@ -218,7 +220,7 @@ class FallingBatch(
                         if (blockStr.willBreak < worldBlockStr.willBreak
                             && Random.nextChance(blockStr.willBreak * (1f + worldBlockStr.willBreak))
                         ) {
-                            level.destroyBlock(movedBlockPos, true)
+                            level.setDebrisAt(movedBlockPos, worldBlock)
                             somethingBreaking = true
                             moveUp += 0.2f
                             moves++

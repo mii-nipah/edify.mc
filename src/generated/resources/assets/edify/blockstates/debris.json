@@ -1,0 +1,49 @@
+{
+  "variants": {
+    "kind=dirty,layers=1": {
+      "model": "edify:block/debris_dirty_1"
+    },
+    "kind=dirty,layers=2": {
+      "model": "edify:block/debris_dirty_2"
+    },
+    "kind=dirty,layers=3": {
+      "model": "edify:block/debris_dirty_3"
+    },
+    "kind=metallic,layers=1": {
+      "model": "edify:block/debris_metallic_1"
+    },
+    "kind=metallic,layers=2": {
+      "model": "edify:block/debris_metallic_2"
+    },
+    "kind=metallic,layers=3": {
+      "model": "edify:block/debris_metallic_3"
+    },
+    "kind=misc,layers=1": {
+      "model": "edify:block/debris_misc_1"
+    },
+    "kind=misc,layers=2": {
+      "model": "edify:block/debris_misc_2"
+    },
+    "kind=misc,layers=3": {
+      "model": "edify:block/debris_misc_3"
+    },
+    "kind=rocky,layers=1": {
+      "model": "edify:block/debris_rocky_1"
+    },
+    "kind=rocky,layers=2": {
+      "model": "edify:block/debris_rocky_2"
+    },
+    "kind=rocky,layers=3": {
+      "model": "edify:block/debris_rocky_3"
+    },
+    "kind=woody,layers=1": {
+      "model": "edify:block/debris_woody_1"
+    },
+    "kind=woody,layers=2": {
+      "model": "edify:block/debris_woody_2"
+    },
+    "kind=woody,layers=3": {
+      "model": "edify:block/debris_woody_3"
+    }
+  }
+}
