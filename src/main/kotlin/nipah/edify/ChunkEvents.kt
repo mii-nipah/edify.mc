@@ -4,7 +4,6 @@ import net.minecraft.core.BlockPos
 import net.minecraft.world.entity.item.FallingBlockEntity
 import net.minecraft.world.level.chunk.LevelChunk
 import net.neoforged.bus.api.SubscribeEvent
-import net.neoforged.neoforge.client.event.RenderGuiLayerEvent
 import net.neoforged.neoforge.event.level.BlockEvent
 import net.neoforged.neoforge.event.level.ChunkEvent
 import net.neoforged.neoforge.event.tick.ServerTickEvent
@@ -43,23 +42,6 @@ object ChunkEvents {
     }
 
     private var serverTicks = 0
-
-    @SubscribeEvent
-    fun onHud(e: RenderGuiLayerEvent.Post) {
-        // Draw after a vanilla layer; HOTBAR is a good anchor
-        val gg = e.guiGraphics
-        val mc = net.minecraft.client.Minecraft.getInstance()
-        val font = mc.font
-        // text
-        var i = 0
-        for (scan in GroupScan.currentlyScanning.distinct()) {
-            val id = scan.hashCode()
-
-            gg.drawString(font, "Scan#$id [ACTIVE]", 10, 30 + i * 10, 0xFFFFFFFF.toInt())
-
-            i++
-        }
-    }
 
     @SubscribeEvent
     fun onServerTick(ev: ServerTickEvent.Post) {

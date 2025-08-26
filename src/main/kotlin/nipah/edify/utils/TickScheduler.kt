@@ -22,28 +22,53 @@ object TickScheduler {
     private val serverTasks = CopyOnWriteArrayList<Task<MinecraftServer>>()
     private val serverNextTickTasks = ConcurrentLinkedDeque<(MinecraftServer) -> Unit>()
 
-    private val threadedNextTickTasks = ConcurrentLinkedDeque<() -> Unit>()
-    private var serverTickPass = false
+    private val threads = Array(1) {
+        ServerThreadedDispatcher(SchedulerThread())
+    }
 
-    init {
-        fun threadCode() {
-            val tickTime = (1f / 20f * 1000f).toLong()
-            while (true) {
-                if (serverTickPass.not()) {
-                    Thread.sleep(100)
-                    continue
-                }
-                serverTickPass = false
-                var next = threadedNextTickTasks.poll()
-                while (next != null) {
-                    next()
-                    next = threadedNextTickTasks.poll()
-                }
-                Thread.sleep(tickTime)
-            }
+    private var nextThreadIndex = 0
+    fun roundRobinDispatcher(): ServerThreadedDispatcher {
+        val thread = threads[nextThreadIndex]
+        nextThreadIndex = (nextThreadIndex + 1) % threads.size
+        return thread
+    }
+
+    internal class SchedulerThread {
+        var threadedNextTickTasks = ConcurrentLinkedDeque<() -> Unit>()
+        var serverTickPass = false
+
+        fun scheduleServerThreaded(action: () -> Unit) {
+            threadedNextTickTasks.add(action)
         }
 
-        thread { threadCode() }
+        init {
+            thread(
+                isDaemon = true,
+                name = "Edify Scheduler Thread",
+                priority = Thread.MIN_PRIORITY,
+            ) {
+                val ticksPerSecond = 20f
+                val tickTime = (1f / ticksPerSecond * 1000f).toLong()
+                var directlyRunning = 0
+                while (true) {
+                    if (serverTickPass.not()) {
+                        Thread.sleep(100)
+                        continue
+                    }
+                    serverTickPass = false
+                    var next = threadedNextTickTasks.poll()
+                    while (next != null) {
+                        next()
+                        next = threadedNextTickTasks.poll()
+                        directlyRunning++
+                    }
+                    if (directlyRunning > 10) {
+                        Thread.sleep(250)
+                    }
+                    Thread.sleep(tickTime)
+                }
+            }
+        }
     }
 
     fun scheduleServer(ticks: Int, action: (MinecraftServer) -> Unit) {
@@ -52,10 +77,6 @@ object TickScheduler {
             return
         }
         serverTasks.add(Task(ticks, action))
-    }
-
-    fun scheduleServerThreaded(action: () -> Unit) {
-        threadedNextTickTasks.add(action)
     }
 
     fun scheduleClient(ticks: Int, action: (Minecraft) -> Unit) {
@@ -74,9 +95,12 @@ object TickScheduler {
         }
     }
 
-    object ServerThreadedDispatcher: CoroutineDispatcher() {
+    @ConsistentCopyVisibility
+    data class ServerThreadedDispatcher internal constructor(
+        internal val thread: SchedulerThread,
+    ): CoroutineDispatcher() {
         override fun dispatch(context: CoroutineContext, block: Runnable) {
-            scheduleServerThreaded {
+            thread.scheduleServerThreaded {
                 block.run()
             }
         }
@@ -92,9 +116,6 @@ object TickScheduler {
 
     val serverScope = CoroutineScope(
         SupervisorJob() + ServerDispatcher
-    )
-    val serverThreadedScope = CoroutineScope(
-        SupervisorJob() + ServerThreadedDispatcher
     )
     val clientScope = CoroutineScope(
         SupervisorJob() + ClientDispatcher
@@ -143,7 +164,11 @@ object TickScheduler {
         // Process server tasks
         processTasks(serverTasks, toRemoveServer, server)
         processNextTickTasks(serverNextTickTasks, server)
-        serverTickPass = true
+
+        // Mark that server tick has passed for threaded dispatchers
+        for (thread in threads) {
+            thread.thread.serverTickPass = true
+        }
     }
 
     @SubscribeEvent

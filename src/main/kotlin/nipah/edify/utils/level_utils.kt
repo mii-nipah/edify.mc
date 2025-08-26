@@ -114,7 +114,7 @@ inline fun Level.blockcastRay(
     start: BlockPos,
     direction: BlockPos,
     length: Int,
-    step: Int = 10,
+    step: Int = 1,
     stopCondition: (BlockPos) -> Boolean = { pos -> getBlockState(pos).isAir.not() },
 ): BlockPos? {
     val end = start.offset(direction.x * length, direction.y * length, direction.z * length)
@@ -124,7 +124,7 @@ inline fun Level.blockcastRay(
 inline fun Level.blockcastLine(
     start: BlockPos,
     end: BlockPos,
-    step: Int = 10,
+    step: Int = 1,
     stopCondition: (BlockPos) -> Boolean = { pos -> getBlockState(pos).isAir.not() },
 ): BlockPos? {
     val deltaX = (end.x - start.x).toDouble()

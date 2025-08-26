@@ -2,19 +2,19 @@ package nipah.edify
 
 import it.unimi.dsi.fastutil.longs.LongArrayFIFOQueue
 import it.unimi.dsi.fastutil.longs.LongOpenHashSet
-import kotlinx.coroutines.*
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.yield
 import net.minecraft.core.BlockPos
-import net.minecraft.world.level.ChunkPos
 import net.minecraft.world.level.block.LiquidBlock
-import nipah.edify.WorldData.chunkData
 import nipah.edify.utils.*
 import java.util.concurrent.CopyOnWriteArrayList
-import kotlin.coroutines.coroutineContext
 
 class GroupScan(
     val chunks: ChunkAccess,
     private val limit: Int = 100_000,
-    private val scanPerTick: Int = 20_000,
+    private val scanPerTick: Int = limit / 20,
     private val blocksPerFloatingSupports: Int = 3,
     private val floatingSupportsNaturalIslandLimit: Int = 5_000,
 ) {
@@ -23,7 +23,9 @@ class GroupScan(
     }
 
     private val toVisit = LongArrayFIFOQueue(limit * 2)
+    private val toVisitSet = LongOpenHashSet(limit * 4, 0.4f)
     private val toVisitWeak = LongArrayFIFOQueue(limit)
+    private val toVisitWeakSet = LongOpenHashSet(limit * 2, 0.4f)
     private val visited = LongOpenHashSet(limit * 10, 0.4f)
     private val group = LongOpenHashSet(limit * 2)
     private val metaGroup = LongOpenHashSet(limit * 2)
@@ -31,173 +33,159 @@ class GroupScan(
 
     fun clear() {
         toVisit.clear()
+        toVisitSet.clear()
         visited.clear()
         group.clear()
     }
 
-    private var currentJob: Job? = null
+    var isRunning = false
+        private set
+
     suspend fun scan(seed: List<BlockPos>): List<BlockPos>? {
-        val seed = if (seed.size > 1000) seed.takeRandomNPercentile(0.01f) else seed
-        currentJob?.cancelAndJoin()
-        clear()
-        var matched = 0
-        for (pos in seed) {
-            val seedX = seed
-            toVisitWeak.clear()
-            toVisit.enqueue(pos.asLong())
-            val ogGroupSize = group.size
-            currentJob = mapGroup()
-            try {
-                currentlyScanning.add(this)
-                currentJob?.join()
-                if (ogGroupSize != group.size) {
-                    matched++
-                    if (matched >= 2) {
-                        break
-                    }
+        try {
+            isRunning = true
+            currentlyScanning.add(this)
+            clear()
+            val seed = if (seed.size > 1000) seed.takeRandomNPercentile(0.01f) else seed
+            withContext(TickScheduler.roundRobinDispatcher()) {
+                for (item in seed) {
+                    mapGroupBranches(item)
                 }
             }
-            catch (_: Throwable) {
-                return null
-            }
-            finally {
-                currentJob = null
-                currentlyScanning.remove(this)
-            }
+            return group.map { BlockPos.of(it) }
         }
-        return group.map { BlockPos.of(it) }
-    }
-
-    private fun inFoundation(pos: BlockPos): Boolean {
-        val chunkPos = ChunkPos.asLong(pos)
-        val lpos = pos.toLocalPos()
-        val cdata = chunkData[chunkPos] ?: return false
-        return cdata.foundationAt(lpos.x, lpos.y, lpos.z)
-    }
-
-    private fun mapGroup() = TickScheduler.serverScope.launch {
-        withContext(TickScheduler.ServerThreadedDispatcher) {
-            val level = chunks.level
-            var iter = 0
-            var tickIter = toVisit.size()
-
-            metaGroup.clear()
-
-            var floatingSupports = 0
-            var capturedBlocks = 0
-
-            val pos = BlockPos.MutableBlockPos()
-            val npos = BlockPos.MutableBlockPos()
-            while (toVisit.isNotEmpty()) {
-                ensureActive()
-                iter++
-                if (iter >= limit) {
-                    return@withContext
-                }
-
-                val longPos = toVisit.dequeueLong()
-                if (longPos in visited) continue
-
-                tickIter++
-                if (tickIter > scanPerTick) {
-                    tickIter = 0
-                    yield()
-                }
-
-                pos.set(longPos)
-                val chunk = chunks.backgroundAt(pos) ?: return@withContext
-                val block = chunk.getBlockState(pos)
-                if (block.isAir || block.isEmpty || block.block is LiquidBlock) continue
-                if (block.isNonSupporting()) {
-                    toVisitWeak.enqueue(longPos)
-                    continue
-                }
-                val inFoundation = inFoundation(pos)
-                visited.add(longPos)
-                if (inFoundation.not()) {
-                    metaGroup.add(longPos)
-                    if (block.isFloating()) {
-                        floatingSupports++
-                        if (floatingSupports > floatingSupportsNaturalIslandLimit) {
-                            return@withContext
-                        }
-                    }
-                    else {
-                        capturedBlocks++
-                    }
-                }
-                else {
-                    return@withContext
-                }
-
-                pos.forEachNeighborWithCornersUpFirstNoAlloc(npos) { npos ->
-                    val longPos = npos.asLong()
-                    if (longPos in visited) return@forEachNeighborWithCornersUpFirstNoAlloc
-                    toVisit.enqueue(longPos)
-                }
-            }
-            if (floatingSupports * blocksPerFloatingSupports >= capturedBlocks.coerceAtLeast(1)) {
-                return@withContext
-            }
-            mapGroupWeak(iter, tickIter)
-            if (metaGroup.isEmpty()) return@withContext
-            if (metaGroup.size > 5000) {
-                println("GroupScan: Large group detected, size=${metaGroup.size}, floatingSupports=$floatingSupports, capturedBlocks=$capturedBlocks")
-            }
-            group.addAll(metaGroup)
+        catch (e: Throwable) {
+            Edify.LOGGER.error("Error during group scan", e)
+            return null
+        }
+        finally {
+            isRunning = false
+            currentlyScanning.remove(this)
         }
     }
 
-    private suspend fun mapGroupWeak(startWithIters: Int, startWithTicks: Int) {
-        coroutineContext.ensureActive()
+    suspend fun mapGroupBranches(seed: BlockPos) {
+        seed.forEachNeighborWithCornersUpFirstNoAlloc { npos ->
+            toVisit.clear()
+            toVisitSet.clear()
+            visited.clear()
+            mapGroup(npos)
+        }
+    }
 
-        val level = chunks.level
+    suspend fun mapGroup(seed: BlockPos) {
+        toVisit.enqueue(seed.asLong())
+        toVisitSet.add(seed.asLong())
 
-        var iter = startWithIters
-        var tickIter = startWithTicks
+        metaGroup.clear()
 
-        metaGroupWeak.clear()
+        var iterTicks = 0
 
         val pos = BlockPos.MutableBlockPos()
         val npos = BlockPos.MutableBlockPos()
-        while (toVisitWeak.isNotEmpty()) {
-            coroutineContext.ensureActive()
-            iter++
-            if (iter >= limit) {
+        while (toVisit.isNotEmpty()) {
+            currentCoroutineContext().ensureActive()
+            if (visited.size > limit || toVisitSet.size > limit) {
                 return
             }
-
-            val longPos = toVisitWeak.dequeueLong()
-            if (longPos in visited) continue
-
-            tickIter++
-            if (tickIter > scanPerTick) {
-                tickIter = 0
+            iterTicks++
+            if (iterTicks > scanPerTick) {
+                iterTicks = 0
                 yield()
             }
 
+            val longPos = toVisit.dequeueLong()
             pos.set(longPos)
-            if (level.isLoaded(pos).not()) {
-                return
-            }
+
             val chunk = chunks.backgroundAt(pos) ?: return
             val block = chunk.getBlockState(pos)
-            if (block.isAir || block.isEmpty || block.block is LiquidBlock) continue
-            val inFoundation = inFoundation(pos)
-            visited.add(longPos)
-            if (inFoundation.not()) {
-                metaGroupWeak.add(longPos)
+            if (block.isAir || block.isEmpty || block.block is LiquidBlock) {
+                continue
             }
-            else {
+            if (block.isNonSupporting()) {
+                mapWeakLinks(pos, sizeLimitWhenHitSolid = 7)
+                continue
+            }
+            if (visited.add(longPos).not()) {
+                continue
+            }
+            metaGroup.add(longPos)
+
+            pos.forEachNeighborFaceOrEdgeNoAlloc(npos) { npos ->
+                val longNpos = npos.asLong()
+                if (toVisitSet.add(longNpos).not()) {
+                    return@forEachNeighborFaceOrEdgeNoAlloc
+                }
+                toVisit.enqueue(longNpos)
+            }
+        }
+        group.addAll(metaGroup)
+    }
+
+    suspend fun mapWeakLinks(seed: BlockPos, sizeLimitWhenHitSolid: Int) {
+        toVisitWeak.clear()
+        toVisitWeakSet.clear()
+        toVisitWeak.enqueue(seed.asLong())
+        metaGroupWeak.clear()
+
+        var smallestPos = seed
+        var largestPos = seed
+        var hitSolid = false
+
+        var iterTicks = 0
+        val pos = BlockPos.MutableBlockPos()
+        val npos = BlockPos.MutableBlockPos()
+        while (toVisitWeak.isNotEmpty()) {
+            currentCoroutineContext().ensureActive()
+
+            if (visited.size > limit || toVisitWeakSet.size > limit) {
                 return
             }
 
-            pos.forEachNeighborWithCornersUpFirstNoAlloc(npos) { npos ->
-                val longPos = npos.asLong()
-                if (longPos in visited) return@forEachNeighborWithCornersUpFirstNoAlloc
-                toVisitWeak.enqueue(longPos)
+            iterTicks++
+            if (iterTicks > scanPerTick) {
+                iterTicks = 0
+                yield()
+            }
+
+            val longPos = toVisitWeak.dequeueLong()
+            pos.set(longPos)
+
+            if (pos < smallestPos) {
+                smallestPos = pos.immutable()
+            }
+            else if (pos > largestPos) {
+                largestPos = pos.immutable()
+            }
+
+            if (hitSolid) {
+                val size = largestPos.distManhattan(smallestPos)
+                if (size > sizeLimitWhenHitSolid) {
+                    break
+                }
+            }
+
+            val chunk = chunks.backgroundAt(pos) ?: return
+            val block = chunk.getBlockState(pos)
+            if (block.isAir || block.isEmpty || block.block is LiquidBlock) {
+                continue
+            }
+            if (visited.add(longPos).not()) {
+                continue
+            }
+            if (block.isNonSupporting().not()) {
+                hitSolid = true
+                continue
+            }
+            metaGroupWeak.add(longPos)
+            pos.forEachNeighborFaceOrEdgeNoAlloc(npos) { npos ->
+                val longNpos = npos.asLong()
+                if (toVisitWeakSet.add(longNpos).not()) {
+                    return@forEachNeighborFaceOrEdgeNoAlloc
+                }
+                toVisitWeak.enqueue(longNpos)
             }
         }
-        group.addAll(metaGroupWeak)
+        metaGroup.addAll(metaGroupWeak)
     }
 }

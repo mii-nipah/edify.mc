@@ -9,6 +9,15 @@
     "kind=dirty,layers=3": {
       "model": "edify:block/debris_dirty_3"
     },
+    "kind=leafy,layers=1": {
+      "model": "edify:block/debris_leafy_1"
+    },
+    "kind=leafy,layers=2": {
+      "model": "edify:block/debris_leafy_2"
+    },
+    "kind=leafy,layers=3": {
+      "model": "edify:block/debris_leafy_3"
+    },
     "kind=metallic,layers=1": {
       "model": "edify:block/debris_metallic_1"
     },

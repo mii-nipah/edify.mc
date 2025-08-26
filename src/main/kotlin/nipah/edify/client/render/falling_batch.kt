@@ -183,8 +183,9 @@ class FallingBatch(
                     }
 
                     val blockStr = BlockStrength.of(block)
-                    val worldBlockStr = BlockStrength.of(worldBlock)
                     val blockW = BlockWeight.of(block)
+                    val worldBlockStr = BlockStrength.of(worldBlock)
+                    val worldBlockW = BlockWeight.of(worldBlock)
 
                     moveUp += 0.5f
                     moves++
@@ -218,6 +219,7 @@ class FallingBatch(
                     }
                     if (worldBlockStr !is BlockStrength.Unbreakable) {
                         if (blockStr.willBreak < worldBlockStr.willBreak
+                            && worldBlockW.value < (totalWeight * travelledFactor)
                             && Random.nextChance(blockStr.willBreak * (1f + worldBlockStr.willBreak))
                         ) {
                             level.setDebrisAt(movedBlockPos, worldBlock)

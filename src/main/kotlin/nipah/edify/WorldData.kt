@@ -13,7 +13,6 @@ import nipah.edify.chunks.removeDebrisData
 import nipah.edify.chunks.setDebrisAt
 import nipah.edify.client.render.createBatch
 import nipah.edify.utils.TickScheduler
-import nipah.edify.utils.collectNeighborsWithCornersUpFirst
 import nipah.edify.utils.preventNextUniversalEventFromRemovingBlock
 
 object WorldData {
@@ -54,7 +53,7 @@ object WorldData {
         val removedArray = removed.toTypedArray()
         val seed = listOf(
             *removedArray,
-            *removed.flatMap { it.collectNeighborsWithCornersUpFirst() }.toTypedArray()
+//            *removed.flatMap { it.collectNeighborsWithCornersUpFirst() }.toTypedArray()
         )
 
         val toRemove = scanWorker.scan(seed) ?: return@launch

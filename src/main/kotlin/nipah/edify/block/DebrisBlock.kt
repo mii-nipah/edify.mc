@@ -5,9 +5,11 @@ import net.minecraft.server.level.ServerLevel
 import net.minecraft.tags.BlockTags
 import net.minecraft.util.RandomSource
 import net.minecraft.util.StringRepresentable
+import net.minecraft.world.entity.Entity
 import net.minecraft.world.entity.player.Player
 import net.minecraft.world.level.BlockGetter
 import net.minecraft.world.level.Level
+import net.minecraft.world.level.LevelReader
 import net.minecraft.world.level.block.Block
 import net.minecraft.world.level.block.Blocks
 import net.minecraft.world.level.block.LiquidBlock
@@ -36,6 +38,7 @@ class DebrisBlock(properties: Properties): Block(
 ) {
     enum class Kind(private val id: String): StringRepresentable {
         Woody("woody"),
+        Leafy("leafy"),
         Rocky("rocky"),
         Metallic("metallic"),
         Dirty("dirty"),
@@ -84,6 +87,7 @@ class DebrisBlock(properties: Properties): Block(
     fun representingBlockState(state: BlockState): BlockState {
         return when (state.getValue(kind)) {
             Kind.Woody -> Blocks.OAK_LOG.defaultBlockState()
+            Kind.Leafy -> Blocks.OAK_LEAVES.defaultBlockState()
             Kind.Rocky -> Blocks.COBBLESTONE.defaultBlockState()
             Kind.Metallic -> Blocks.IRON_BLOCK.defaultBlockState()
             Kind.Dirty -> Blocks.DIRT.defaultBlockState()
@@ -106,6 +110,7 @@ class DebrisBlock(properties: Properties): Block(
 
         val multiplier = when (state.getValue(kind)) {
             Kind.Woody -> 1.2f + (toolMultiplier - 1.0f)
+            Kind.Leafy -> 15.0f + (toolMultiplier - 1.0f)
             Kind.Rocky -> 0.7f + (toolMultiplier - 1.0f)
             Kind.Metallic -> 0.5f + (toolMultiplier - 1.0f)
             Kind.Dirty -> 3.0f + (toolMultiplier - 1.0f)
@@ -122,11 +127,27 @@ class DebrisBlock(properties: Properties): Block(
         return base * (multiplier * slower)
     }
 
+    override fun getSoundType(state: BlockState, level: LevelReader, pos: BlockPos, entity: Entity?): SoundType {
+        return when (state.getValue(kind)) {
+            Kind.Woody -> SoundType.WOOD
+            Kind.Leafy -> SoundType.GRASS
+            Kind.Rocky -> SoundType.STONE
+            Kind.Metallic -> SoundType.METAL
+            Kind.Dirty -> SoundType.GRAVEL
+            Kind.Misc -> SoundType.ANCIENT_DEBRIS
+        }
+    }
+
     override fun randomTick(state: BlockState, level: ServerLevel, pos: BlockPos, random: RandomSource) {
         val below = pos.below()
         val belowState = level.getBlockState(below)
         if (belowState.isAir || belowState.isEmpty || belowState.block is LiquidBlock) {
-            level.moveDebrisTo(pos, below)
+            val allBelow = level.blockcastRay(
+                below,
+                BlockPos(0, -1, 0),
+                length = 32,
+            ) ?: below
+            level.moveDebrisTo(pos, allBelow)
             return
         }
         if (belowState.block !is DebrisBlock) {
@@ -168,11 +189,8 @@ fun ChunkDebris.Entry.toBlockState(): BlockState {
     val differenceInPercent = 1.0f - (leastUsedStateCount.value / mostUsedStateCount.value.toFloat())
     val kind = when {
         differenceInPercent < 0.3f -> DebrisBlock.Kind.Misc
-        
-        mostUsedState.isLogLike()
-                || mostUsedState.isPlankLike()
-                || mostUsedState.has(BlockTags.LEAVES) -> DebrisBlock.Kind.Woody
-
+        mostUsedState.isLogLike() || mostUsedState.isPlankLike() -> DebrisBlock.Kind.Woody
+        mostUsedState.has(BlockTags.LEAVES) -> DebrisBlock.Kind.Leafy
         mostUsedState.isStoneLike() -> DebrisBlock.Kind.Rocky
         mostUsedState.isHeavy() -> DebrisBlock.Kind.Metallic
         mostUsedState.isDirtLike() -> DebrisBlock.Kind.Dirty
