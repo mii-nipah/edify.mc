@@ -87,8 +87,8 @@ fun ServerLevel.lightweightExplode(
     }
     sendParticlesAt(
         center,
-        ParticleTypes.EXPLOSION_EMITTER,
-        1
+        ParticleTypes.EXPLOSION,
+        (radius * radius * 0.5f).toInt().coerceAtLeast(1).coerceAtMost(10),
     )
     playSound(
         null,

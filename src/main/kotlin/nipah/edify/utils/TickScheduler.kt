@@ -12,6 +12,7 @@ import net.neoforged.neoforge.event.tick.ServerTickEvent
 import java.util.*
 import java.util.concurrent.ConcurrentLinkedDeque
 import java.util.concurrent.CopyOnWriteArrayList
+import kotlin.concurrent.thread
 import kotlin.coroutines.CoroutineContext
 
 object TickScheduler {
@@ -21,12 +22,40 @@ object TickScheduler {
     private val serverTasks = CopyOnWriteArrayList<Task<MinecraftServer>>()
     private val serverNextTickTasks = ConcurrentLinkedDeque<(MinecraftServer) -> Unit>()
 
+    private val threadedNextTickTasks = ConcurrentLinkedDeque<() -> Unit>()
+    private var serverTickPass = false
+
+    init {
+        fun threadCode() {
+            val tickTime = (1f / 20f * 1000f).toLong()
+            while (true) {
+                if (serverTickPass.not()) {
+                    Thread.sleep(100)
+                    continue
+                }
+                serverTickPass = false
+                var next = threadedNextTickTasks.poll()
+                while (next != null) {
+                    next()
+                    next = threadedNextTickTasks.poll()
+                }
+                Thread.sleep(tickTime)
+            }
+        }
+
+        thread { threadCode() }
+    }
+
     fun scheduleServer(ticks: Int, action: (MinecraftServer) -> Unit) {
         if (ticks == 1) {
             serverNextTickTasks.add(action)
             return
         }
         serverTasks.add(Task(ticks, action))
+    }
+
+    fun scheduleServerThreaded(action: () -> Unit) {
+        threadedNextTickTasks.add(action)
     }
 
     fun scheduleClient(ticks: Int, action: (Minecraft) -> Unit) {
@@ -45,6 +74,14 @@ object TickScheduler {
         }
     }
 
+    object ServerThreadedDispatcher: CoroutineDispatcher() {
+        override fun dispatch(context: CoroutineContext, block: Runnable) {
+            scheduleServerThreaded {
+                block.run()
+            }
+        }
+    }
+
     object ClientDispatcher: CoroutineDispatcher() {
         override fun dispatch(context: CoroutineContext, block: Runnable) {
             scheduleClient(ticks = 1) {
@@ -55,6 +92,9 @@ object TickScheduler {
 
     val serverScope = CoroutineScope(
         SupervisorJob() + ServerDispatcher
+    )
+    val serverThreadedScope = CoroutineScope(
+        SupervisorJob() + ServerThreadedDispatcher
     )
     val clientScope = CoroutineScope(
         SupervisorJob() + ClientDispatcher
@@ -103,6 +143,7 @@ object TickScheduler {
         // Process server tasks
         processTasks(serverTasks, toRemoveServer, server)
         processNextTickTasks(serverNextTickTasks, server)
+        serverTickPass = true
     }
 
     @SubscribeEvent
@@ -116,12 +157,3 @@ object TickScheduler {
 
     private class Task<T>(var ticksLeft: Int, var action: (T) -> Unit)
 }
-
-suspend fun nextClientTick() = kotlinx.coroutines.suspendCancellableCoroutine { cont ->
-    TickScheduler.ClientDispatcher.dispatch(cont.context) { cont.resume(Unit) { cause, _, _ -> } }
-}
-
-suspend fun nextServerTick() = kotlinx.coroutines.suspendCancellableCoroutine { cont ->
-    TickScheduler.ServerDispatcher.dispatch(cont.context) { cont.resume(Unit) { cause, _, _ -> } }
-}
-

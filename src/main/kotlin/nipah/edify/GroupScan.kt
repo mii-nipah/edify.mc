@@ -13,8 +13,8 @@ import kotlin.coroutines.coroutineContext
 
 class GroupScan(
     val chunks: ChunkAccess,
-    private val limit: Int = 50_000,
-    private val scanPerTick: Int = 1_000,
+    private val limit: Int = 100_000,
+    private val scanPerTick: Int = 20_000,
     private val blocksPerFloatingSupports: Int = 3,
     private val floatingSupportsNaturalIslandLimit: Int = 5_000,
 ) {
@@ -76,69 +76,76 @@ class GroupScan(
     }
 
     private fun mapGroup() = TickScheduler.serverScope.launch {
-        val level = chunks.level
-        var iter = 0
-        var tickIter = toVisit.size()
+        withContext(TickScheduler.ServerThreadedDispatcher) {
+            val level = chunks.level
+            var iter = 0
+            var tickIter = toVisit.size()
 
-        metaGroup.clear()
+            metaGroup.clear()
 
-        var floatingSupports = 0
-        var capturedBlocks = 0
+            var floatingSupports = 0
+            var capturedBlocks = 0
 
-        val pos = BlockPos.MutableBlockPos()
-        val npos = BlockPos.MutableBlockPos()
-        while (toVisit.isNotEmpty() && isActive) {
-            iter++
-            if (iter >= limit) {
-                return@launch
-            }
+            val pos = BlockPos.MutableBlockPos()
+            val npos = BlockPos.MutableBlockPos()
+            while (toVisit.isNotEmpty()) {
+                ensureActive()
+                iter++
+                if (iter >= limit) {
+                    return@withContext
+                }
 
-            val longPos = toVisit.dequeueLong()
-            if (longPos in visited) continue
+                val longPos = toVisit.dequeueLong()
+                if (longPos in visited) continue
 
-            tickIter++
-            if (tickIter > scanPerTick) {
-                tickIter = 0
-                nextServerTick()
-            }
+                tickIter++
+                if (tickIter > scanPerTick) {
+                    tickIter = 0
+                    yield()
+                }
 
-            pos.set(longPos)
-            if (level.isLoaded(pos).not()) continue
-            val block = level.getBlockState(pos)
-            if (block.isAir || block.isEmpty || block.block is LiquidBlock) continue
-            if (block.isNonSupporting()) {
-                toVisitWeak.enqueue(longPos)
-                continue
-            }
-            val inFoundation = inFoundation(pos)
-            visited.add(longPos)
-            if (inFoundation.not()) {
-                metaGroup.add(longPos)
-                if (block.isFloating()) {
-                    floatingSupports++
-                    if (floatingSupports > floatingSupportsNaturalIslandLimit) {
-                        return@launch
+                pos.set(longPos)
+                val chunk = chunks.backgroundAt(pos) ?: return@withContext
+                val block = chunk.getBlockState(pos)
+                if (block.isAir || block.isEmpty || block.block is LiquidBlock) continue
+                if (block.isNonSupporting()) {
+                    toVisitWeak.enqueue(longPos)
+                    continue
+                }
+                val inFoundation = inFoundation(pos)
+                visited.add(longPos)
+                if (inFoundation.not()) {
+                    metaGroup.add(longPos)
+                    if (block.isFloating()) {
+                        floatingSupports++
+                        if (floatingSupports > floatingSupportsNaturalIslandLimit) {
+                            return@withContext
+                        }
+                    }
+                    else {
+                        capturedBlocks++
                     }
                 }
                 else {
-                    capturedBlocks++
+                    return@withContext
+                }
+
+                pos.forEachNeighborWithCornersUpFirstNoAlloc(npos) { npos ->
+                    val longPos = npos.asLong()
+                    if (longPos in visited) return@forEachNeighborWithCornersUpFirstNoAlloc
+                    toVisit.enqueue(longPos)
                 }
             }
-            else {
-                return@launch
+            if (floatingSupports * blocksPerFloatingSupports >= capturedBlocks.coerceAtLeast(1)) {
+                return@withContext
             }
-
-            pos.forEachNeighborNoAlloc(npos) { npos ->
-                val longPos = npos.asLong()
-                if (longPos in visited) return@forEachNeighborNoAlloc
-                toVisit.enqueue(longPos)
+            mapGroupWeak(iter, tickIter)
+            if (metaGroup.isEmpty()) return@withContext
+            if (metaGroup.size > 5000) {
+                println("GroupScan: Large group detected, size=${metaGroup.size}, floatingSupports=$floatingSupports, capturedBlocks=$capturedBlocks")
             }
+            group.addAll(metaGroup)
         }
-        if (floatingSupports * blocksPerFloatingSupports >= capturedBlocks.coerceAtLeast(1)) {
-            return@launch
-        }
-        mapGroupWeak(iter, tickIter)
-        group.addAll(metaGroup)
     }
 
     private suspend fun mapGroupWeak(startWithIters: Int, startWithTicks: Int) {
@@ -153,7 +160,8 @@ class GroupScan(
 
         val pos = BlockPos.MutableBlockPos()
         val npos = BlockPos.MutableBlockPos()
-        while (toVisitWeak.isNotEmpty() && coroutineContext.isActive) {
+        while (toVisitWeak.isNotEmpty()) {
+            coroutineContext.ensureActive()
             iter++
             if (iter >= limit) {
                 return
@@ -165,11 +173,15 @@ class GroupScan(
             tickIter++
             if (tickIter > scanPerTick) {
                 tickIter = 0
-                nextServerTick()
+                yield()
             }
 
             pos.set(longPos)
-            val block = level.getBlockState(pos)
+            if (level.isLoaded(pos).not()) {
+                return
+            }
+            val chunk = chunks.backgroundAt(pos) ?: return
+            val block = chunk.getBlockState(pos)
             if (block.isAir || block.isEmpty || block.block is LiquidBlock) continue
             val inFoundation = inFoundation(pos)
             visited.add(longPos)
@@ -180,9 +192,9 @@ class GroupScan(
                 return
             }
 
-            pos.forEachNeighborNoAlloc(npos) { npos ->
+            pos.forEachNeighborWithCornersUpFirstNoAlloc(npos) { npos ->
                 val longPos = npos.asLong()
-                if (longPos in visited) return@forEachNeighborNoAlloc
+                if (longPos in visited) return@forEachNeighborWithCornersUpFirstNoAlloc
                 toVisitWeak.enqueue(longPos)
             }
         }

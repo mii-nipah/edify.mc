@@ -138,6 +138,25 @@ fun BlockPos.collectNeighborsTopBottom(): MutableList<BlockPos> {
     return neighbors
 }
 
+inline fun BlockPos.forEachNeighborFaceOrEdgeNoAlloc(
+    with: BlockPos.MutableBlockPos,
+    body: (BlockPos.MutableBlockPos) -> Unit,
+) {
+    val x0 = this.x
+    val y0 = this.y
+    val z0 = this.z
+    for (dx in -1..1) for (dy in -1..1) for (dz in -1..1) {
+        if ((dx or dy or dz) == 0) continue        // skip self (0,0,0)
+        if (dx != 0 && dy != 0 && dz != 0) continue // skip corners (±1,±1,±1)
+        with.set(x0 + dx, y0 + dy, z0 + dz)
+        body(with)
+    }
+}
+
+inline fun BlockPos.forEachNeighborFaceOrEdgeNoAlloc(
+    body: (BlockPos.MutableBlockPos) -> Unit,
+) = forEachNeighborFaceOrEdgeNoAlloc(BlockPos.MutableBlockPos(), body)
+
 inline fun BlockPos.forEachNeighborWithCornersNoAlloc(body: (BlockPos.MutableBlockPos) -> Unit) {
     val m = BlockPos.MutableBlockPos()
     val x0 = this.x;
@@ -165,8 +184,8 @@ val OFFSETS_UP_FIRST: IntArray = intArrayOf(
     1, -1, 1, 1, -1, -1, -1, -1, 1, -1, -1, -1
 )
 
-inline fun BlockPos.forEachNeighborWithCornersUpFirstNoAlloc(body: (BlockPos.MutableBlockPos) -> Unit) {
-    val m = BlockPos.MutableBlockPos()
+inline fun BlockPos.forEachNeighborWithCornersUpFirstNoAlloc(npos: BlockPos.MutableBlockPos, body: (BlockPos.MutableBlockPos) -> Unit) {
+    val m = npos
     val x0 = this.x;
     val y0 = this.y;
     val z0 = this.z
@@ -180,6 +199,9 @@ inline fun BlockPos.forEachNeighborWithCornersUpFirstNoAlloc(body: (BlockPos.Mut
         i += 3
     }
 }
+
+inline fun BlockPos.forEachNeighborWithCornersUpFirstNoAlloc(body: (BlockPos.MutableBlockPos) -> Unit) =
+    forEachNeighborWithCornersUpFirstNoAlloc(BlockPos.MutableBlockPos(), body)
 
 fun BlockPos.collectNeighborsWithCornersUpFirst(): MutableList<BlockPos> {
     val neighbors = mutableListOf<BlockPos>()

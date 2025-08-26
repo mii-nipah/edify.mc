@@ -2,6 +2,7 @@ package nipah.edify.block
 
 import net.minecraft.core.BlockPos
 import net.minecraft.server.level.ServerLevel
+import net.minecraft.tags.BlockTags
 import net.minecraft.util.RandomSource
 import net.minecraft.util.StringRepresentable
 import net.minecraft.world.entity.player.Player
@@ -167,7 +168,11 @@ fun ChunkDebris.Entry.toBlockState(): BlockState {
     val differenceInPercent = 1.0f - (leastUsedStateCount.value / mostUsedStateCount.value.toFloat())
     val kind = when {
         differenceInPercent < 0.3f -> DebrisBlock.Kind.Misc
-        mostUsedState.isLogLike() || mostUsedState.isPlankLike() -> DebrisBlock.Kind.Woody
+        
+        mostUsedState.isLogLike()
+                || mostUsedState.isPlankLike()
+                || mostUsedState.has(BlockTags.LEAVES) -> DebrisBlock.Kind.Woody
+
         mostUsedState.isStoneLike() -> DebrisBlock.Kind.Rocky
         mostUsedState.isHeavy() -> DebrisBlock.Kind.Metallic
         mostUsedState.isDirtLike() -> DebrisBlock.Kind.Dirty

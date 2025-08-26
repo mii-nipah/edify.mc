@@ -106,7 +106,7 @@ class FallingStructureRenderer(val ctx: EntityRendererProvider.Context): EntityR
     }
 
     override fun shouldRender(e: FallingStructureEntity, camera: Frustum, camX: Double, camY: Double, camZ: Double): Boolean {
-        if (e.dataClient.blocks.isEmpty()) {
+        if (e.isClientInitialized() && e.dataClient.blocks.isEmpty()) {
             return false
         }
         return super.shouldRender(e, camera, camX, camY, camZ)

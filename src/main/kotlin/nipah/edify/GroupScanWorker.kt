@@ -6,7 +6,7 @@ import nipah.edify.pooling.RingPool
 data class GroupScanWorker(val chunks: ChunkAccess) {
     private val pool = RingPool(
         { GroupScan(chunks) },
-        amount = 5,
+        amount = 15,
     )
 
     suspend fun scan(seed: List<BlockPos>): List<BlockPos>? {

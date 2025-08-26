@@ -52,6 +52,8 @@ class FallingStructureEntity(type: EntityType<FallingStructureEntity>, level: Le
     lateinit var data: FallingBatch
     lateinit var dataClient: FallingBatchClient
 
+    fun isClientInitialized() = ::dataClient.isInitialized
+
     fun setSpawnData(data: FallingBatch) {
         this.data = data
         this.setPos(data.pos.x.toDouble(), data.pos.y.toDouble(), data.pos.z.toDouble())
