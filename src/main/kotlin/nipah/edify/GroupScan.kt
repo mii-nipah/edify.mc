@@ -81,6 +81,9 @@ class GroupScan(
 
         metaGroup.clear()
 
+        var solidHits = 0
+        var floatingHits = 0
+
         var iterTicks = 0
 
         val pos = BlockPos.MutableBlockPos()
@@ -104,8 +107,17 @@ class GroupScan(
             if (block.isAir || block.isEmpty || block.block is LiquidBlock) {
                 continue
             }
+            if (block.isFloating()) {
+                floatingHits++
+                if (floatingHits > floatingSupportsNaturalIslandLimit) {
+                    return
+                }
+            }
+            else {
+                solidHits++
+            }
             if (block.isNonSupporting()) {
-                mapWeakLinks(pos, sizeLimitWhenHitSolid = 7)
+                solidHits += mapWeakLinks(pos, sizeLimitWhenHitSolid = 7)
                 continue
             }
             if (visited.add(longPos).not()) {
@@ -121,10 +133,15 @@ class GroupScan(
                 toVisit.enqueue(longNpos)
             }
         }
+        val blocksPerSupport =
+            solidHits / blocksPerFloatingSupports.coerceAtLeast(1)
+        if (blocksPerSupport <= floatingHits) {
+            return
+        }
         group.addAll(metaGroup)
     }
 
-    suspend fun mapWeakLinks(seed: BlockPos, sizeLimitWhenHitSolid: Int) {
+    suspend fun mapWeakLinks(seed: BlockPos, sizeLimitWhenHitSolid: Int): Int {
         toVisitWeak.clear()
         toVisitWeakSet.clear()
         toVisitWeak.enqueue(seed.asLong())
@@ -141,7 +158,7 @@ class GroupScan(
             currentCoroutineContext().ensureActive()
 
             if (visited.size > limit || toVisitWeakSet.size > limit) {
-                return
+                return 0
             }
 
             iterTicks++
@@ -167,7 +184,7 @@ class GroupScan(
                 }
             }
 
-            val chunk = chunks.backgroundAt(pos) ?: return
+            val chunk = chunks.backgroundAt(pos) ?: return 0
             val block = chunk.getBlockState(pos)
             if (block.isAir || block.isEmpty || block.block is LiquidBlock) {
                 continue
@@ -189,5 +206,6 @@ class GroupScan(
             }
         }
         metaGroup.addAll(metaGroupWeak)
+        return metaGroupWeak.size
     }
 }
