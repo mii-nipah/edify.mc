@@ -6,6 +6,7 @@ import net.minecraft.world.level.block.Blocks
 import net.minecraft.world.level.block.LiquidBlock
 import net.minecraft.world.level.chunk.LevelChunk
 import nipah.edify.utils.*
+import kotlin.random.Random
 
 class ChunkData(val chunkPos: ChunkPos, chunk: LevelChunk) {
     private val minBuildHeight = chunk.minBuildHeight
@@ -20,6 +21,28 @@ class ChunkData(val chunkPos: ChunkPos, chunk: LevelChunk) {
         return foundation.boundedContainsValue(x, safeY(y), z, 1)
     }
 
+    fun findClosestFoundations(wx: Int, wy: Int, wz: Int, maxDistance: Int): List<BlockPos> {
+        val checkPos = BlockPos(wx, safeY(wy), wz).toLocalPos()
+
+        val results = mutableListOf<BlockPos>()
+
+        val pos = BlockPos.MutableBlockPos()
+        foundation.forEach { x, y, z, v ->
+            if (v == 1) {
+                pos.set(x, y + minBuildHeight, z)
+                val dist = checkPos.distManhattan(pos)
+                if (dist > maxDistance) {
+                    return@forEach LoopControl.Break
+                }
+                val wpos = pos.toWorldPos(chunkPos)
+                results.add(wpos)
+            }
+            LoopControl.Continue
+        }
+
+        return results
+    }
+
     fun setFoundationAt(x: Int, y: Int, z: Int, value: Boolean) {
         foundation[x, safeY(y), z] = if (value) 1 else 0
     }
@@ -29,11 +52,14 @@ class ChunkData(val chunkPos: ChunkPos, chunk: LevelChunk) {
     }
 
     init {
+        val chanceToFoundation =
+            Configs.startup.chunkData.nonBedrockFoundationChance.get().toFloat()
         val wpos = BlockPos.MutableBlockPos()
-        chunk.forEachBlock(chunk.minBuildHeight until chunk.minBuildHeight + 2) { pos ->
+        val upperBound = (maxBuildHeight - minBuildHeight) / 2
+        chunk.forEachBlock { pos ->
             chunk.localToWorldPosNoAlloc(pos, wpos)
             val block = chunk.getBlockState(wpos)
-            if (block.isAir || block.block is LiquidBlock) {
+            if (block.isAir || block.isEmpty || block.block is LiquidBlock) {
                 return@forEachBlock
             }
             if (block.isOf(Blocks.BEDROCK)) {
@@ -41,10 +67,19 @@ class ChunkData(val chunkPos: ChunkPos, chunk: LevelChunk) {
             }
             else {
                 val anyIsFoundation = pos.findNeighborNoAlloc { npos ->
-                    return@findNeighborNoAlloc foundation.boundedGet(npos.x, safeY(npos.y), npos.z) == 1
+                    return@findNeighborNoAlloc foundation.boundedContainsEitherValue(npos.x, safeY(npos.y), npos.z, 1, 2)
                 } != null
                 if (anyIsFoundation) {
-                    foundation[pos.x, safeY(pos.y), pos.z] = 1
+                    if (block.isDirtLike() || block.isStoneLike() || block.isHeavy()) {
+                        val distanceToUpper = (pos.y - minBuildHeight).toFloat() / upperBound.toFloat()
+                        foundation[pos.x, safeY(pos.y), pos.z] =
+                            if (Random.nextChance(chanceToFoundation * (1f - distanceToUpper)))
+                                1
+                            else 2
+                    }
+                    else {
+                        foundation[pos.x, safeY(pos.y), pos.z] = 2
+                    }
                 }
             }
         }

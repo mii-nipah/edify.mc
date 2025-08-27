@@ -53,11 +53,18 @@ object Gizmos {
         push(BoxCmd(aabb, color, depth, ttl, tag))
     }
 
-    fun block(pos: BlockPos, color: Int, depth: Depth = Depth.DEPTH_TEST, ttl: Int = 0, tag: String? = null) {
+    fun block(
+        pos: BlockPos,
+        color: Int,
+        depth: Depth = Depth.DEPTH_TEST,
+        ttl: Int = 0,
+        tag: String? = null,
+        inflate: Double = 0.03,
+    ) {
         val aabb = AABB(
             pos.x.toDouble(), pos.y.toDouble(), pos.z.toDouble(),
             pos.x + 1.0, pos.y + 1.0, pos.z + 1.0
-        ).inflate(0.03)
+        ).inflate(inflate)
         push(BoxCmd(aabb, color, depth, ttl, tag))
     }
 

@@ -7,6 +7,7 @@ import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.yield
 import net.minecraft.core.BlockPos
+import net.minecraft.world.level.ChunkPos
 import net.minecraft.world.level.block.LiquidBlock
 import nipah.edify.utils.*
 import java.util.concurrent.CopyOnWriteArrayList
@@ -75,6 +76,14 @@ class GroupScan(
         }
     }
 
+    private fun isFoundation(pos: BlockPos): Boolean {
+        val chunkPos = ChunkPos.asLong(pos)
+        val chunk = WorldData.getChunkData(chunks.level, chunkPos) ?: return true
+        val lposX = pos.toLocalX()
+        val lposZ = pos.toLocalZ()
+        return chunk.foundationAt(lposX, pos.y, lposZ)
+    }
+
     suspend fun mapGroup(seed: BlockPos) {
         toVisit.enqueue(seed.asLong())
         toVisitSet.add(seed.asLong())
@@ -107,6 +116,9 @@ class GroupScan(
             if (block.isAir || block.isEmpty || block.block is LiquidBlock) {
                 continue
             }
+            if (isFoundation(pos)) {
+                return
+            }
             if (block.isFloating()) {
                 floatingHits++
                 if (floatingHits > floatingSupportsNaturalIslandLimit) {
@@ -116,10 +128,10 @@ class GroupScan(
             else {
                 solidHits++
             }
-            if (block.isNonSupporting()) {
-                solidHits += mapWeakLinks(pos, sizeLimitWhenHitSolid = 7)
-                continue
-            }
+//            if (block.isNonSupporting()) {
+//                solidHits += mapWeakLinks(pos, sizeLimitWhenHitSolid = 7)
+//                continue
+//            }
             if (visited.add(longPos).not()) {
                 continue
             }
@@ -188,6 +200,9 @@ class GroupScan(
             val block = chunk.getBlockState(pos)
             if (block.isAir || block.isEmpty || block.block is LiquidBlock) {
                 continue
+            }
+            if (isFoundation(pos)) {
+                return 0
             }
             if (visited.add(longPos).not()) {
                 continue

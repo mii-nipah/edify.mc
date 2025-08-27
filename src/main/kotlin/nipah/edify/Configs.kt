@@ -126,9 +126,28 @@ object Configs {
             }
         }
 
+        class ChunkData(builder: ModConfigSpec.Builder) {
+            var nonBedrockFoundationChance: ModConfigSpec.DoubleValue private set
+
+            init {
+                builder.withSection("chunk_data", "Options that control chunk data handling") {
+                    nonBedrockFoundationChance = run {
+                        comment("Chance for a non-bedrock block, connected to bedrock, to be considered a foundation block.")
+                        comment("Foundation blocks are used as 'hard stops' for group scans, they help control the grow size of scans in the natural generated world.")
+                        comment("Higher values will lead to more naturally generated blocks in the world being considered foundational, which will mean things like cutting entire mountains will be more likely to not work. But will also make the scans substantially faster for natural terrain, and will make it way more responsive for player structure in return.")
+                        comment("Set this to 0.0 to only consider bedrock blocks as foundation blocks.")
+                        comment("Set this to 1.0 to consider all naturally generated blocks as foundation blocks.")
+                        comment("Apart from saying 'all blocks will be considered', in reality the upper you go the sparse the generation should be. But with higher values the amount of blocks considered foundation will be really high, so it will make it almost the same outcome.")
+                        defineInRange("nonBedrockFoundationChance", 0.007, 0.0, 1.0)
+                    }
+                }
+            }
+        }
+
         val threading = Threading(builder)
         val chunkEvents = ChunkEvents(builder)
         val worldData = WorldData(builder)
         val groupScan = GroupScan(builder)
+        val chunkData = ChunkData(builder)
     }
 }

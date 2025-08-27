@@ -1,6 +1,7 @@
 package nipah.edify.utils
 
 import net.minecraft.core.BlockPos
+import net.minecraft.world.level.ChunkPos
 import net.minecraft.world.level.chunk.LevelChunk
 
 inline fun LevelChunk.forEachBlock(action: (pos: BlockPos) -> Unit) {
@@ -69,6 +70,30 @@ fun BlockPos.toLocalPos(): BlockPos {
     val baseX = chunkX shl 4 // chunk.x * 16
     val baseZ = chunkZ shl 4 // chunk.z * 16
     return BlockPos(this.x - baseX, this.y, this.z - baseZ)
+}
+
+fun BlockPos.toWorldPos(chunkPos: ChunkPos): BlockPos {
+    val baseX = chunkPos.x shl 4 // chunk.x * 16
+    val baseZ = chunkPos.z shl 4 // chunk.z * 16
+    return BlockPos(baseX + this.x, this.y, baseZ + this.z)
+}
+
+fun BlockPos.toLongWorldPos(chunkPos: ChunkPos): Long {
+    val baseX = chunkPos.x shl 4 // chunk.x * 16
+    val baseZ = chunkPos.z shl 4 // chunk.z * 16
+    return BlockPos.asLong(baseX + this.x, this.y, baseZ + this.z)
+}
+
+fun BlockPos.toLocalX(): Int {
+    val chunkX = this.x shr 4
+    val baseX = chunkX shl 4 // chunk.x * 16
+    return this.x - baseX
+}
+
+fun BlockPos.toLocalZ(): Int {
+    val chunkZ = this.z shr 4
+    val baseZ = chunkZ shl 4 // chunk.z * 16
+    return this.z - baseZ
 }
 
 fun LevelChunk.worldToLocalPos(worldX: Int, y: Int, worldZ: Int): BlockPos {

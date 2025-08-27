@@ -38,6 +38,26 @@ class IntArray3d(
         return data[index(x, y, z)] == value
     }
 
+    fun boundedContainsEitherValue(x: Int, y: Int, z: Int, value1: Int, value2: Int): Boolean {
+        if ((x or y or z or (sizeX - 1 - x) or (sizeY - 1 - y) or (sizeZ - 1 - z)) < 0) return false
+        val item = data[index(x, y, z)]
+        return item == value1 || item == value2
+    }
+
+    inline fun forEach(action: (x: Int, y: Int, z: Int, value: Int) -> LoopControl) {
+        for (z in 0 until sizeZ) {
+            for (y in 0 until sizeY) {
+                for (x in 0 until sizeX) {
+                    val next = action(x, y, z, this[x, y, z])
+                    when (next) {
+                        LoopControl.Continue -> {}
+                        LoopControl.Break -> return
+                    }
+                }
+            }
+        }
+    }
+
     override fun serializeNBT(p0: HolderLookup.Provider): @UnknownNullability CompoundTag {
         val tag = CompoundTag()
         tag.putInt("sizeX", sizeX)

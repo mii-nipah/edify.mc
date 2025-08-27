@@ -1,7 +1,9 @@
 package nipah.edify
 
 import net.minecraft.core.BlockPos
+import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.entity.item.FallingBlockEntity
+import net.minecraft.world.level.ChunkPos
 import net.minecraft.world.level.chunk.LevelChunk
 import net.neoforged.bus.api.SubscribeEvent
 import net.neoforged.neoforge.event.level.BlockEvent
@@ -10,13 +12,41 @@ import net.neoforged.neoforge.event.tick.ServerTickEvent
 import nipah.edify.client.render.BatchRenderer
 import nipah.edify.events.UniversalBlockEvent
 import nipah.edify.utils.TickScheduler
+import java.util.*
 
 object ChunkEvents {
+//    @SubscribeEvent
+//    fun onClientTick(e: ClientTickEvent.Post) {
+//        var serverLevel = serverLevel
+//        if (serverLevel == null) return
+//        val mc = Minecraft.getInstance()
+//        val player = mc.player ?: return
+//        val level = player.level() ?: return
+//        if (level.isClientSide.not()) return
+//
+//        val lookingAt = player.pick(20.0, 0.0f, false) as? BlockHitResult ?: return
+//        val pos = lookingAt.blockPos
+//        val chunkPos = ChunkPos(pos)
+//        val cdata = WorldData.getChunkData(serverLevel, chunkPos.toLong()) ?: return
+//        val lpos = pos.toLocalPos()
+//        val isFoundation = cdata.foundationAt(lpos.x, lpos.y, lpos.z)
+//        if (isFoundation) {
+//            Gizmos.block(pos, Gizmos.Color.green)
+//        }
+//        val closestFoundations = cdata.findClosestFoundations(lpos.x, lpos.y, lpos.z, 300)
+//        for (wpos in closestFoundations) {
+//            Gizmos.block(wpos, Gizmos.Color.yellow, Depth.XRAY)
+//        }
+//    }
+
+    private var serverLevel: ServerLevel? = null
+
     @SubscribeEvent
     fun onChunkLoad(e: ChunkEvent.Load) {
         if (e.level.isClientSide) return
+        serverLevel = e.level as? ServerLevel
+        val pos = e.chunk.pos
         TickScheduler.scheduleServer(10) {
-            val pos = e.chunk.pos
             val chunk = e.level.chunkSource.getChunkNow(pos.x, pos.z)
             if (chunk != null) {
                 WorldData.mapChunk(chunk)
@@ -24,10 +54,31 @@ object ChunkEvents {
         }
     }
 
+    private val unloadListeners = mutableListOf<(ChunkPos) -> Unit>()
+    private val weakUnloadListeners = WeakHashMap<Any, (ChunkPos) -> Unit>()
+    fun listenToChunkUnload(listener: (ChunkPos) -> Unit): () -> Unit {
+        unloadListeners.add(listener)
+        return {
+            unloadListeners.remove(listener)
+        }
+    }
+
+    fun listenToChunkUnloadWeak(owner: Any, listener: (ChunkPos) -> Unit) {
+        weakUnloadListeners[owner] = listener
+    }
+
     @SubscribeEvent
     fun onChunkUnload(e: ChunkEvent.Unload) {
+        if (e.level.isClientSide) return
         val pos = e.chunk.pos
-        WorldData.unloadChunkData(pos)
+        WorldData.unloadChunkData(e.level, pos)
+
+        for (listener in unloadListeners) {
+            listener(pos)
+        }
+        for (listener in weakUnloadListeners.values) {
+            listener(pos)
+        }
     }
 
     private val queued = mutableSetOf<Triple<LevelChunk, BlockPos, BlockChangeKind>>()
@@ -100,9 +151,8 @@ object ChunkEvents {
     fun onRemoveBatch(e: UniversalBlockEvent.BlockRemovedBatch) {
         var blocks = e.blocks
         if (blocks.isEmpty()) return
-        if (blocks.size > 30) {
+        if (blocks.size > 60) {
             val percentile = when (blocks.size) {
-                in 31..50 -> 0.5
                 in 51..100 -> 0.3
                 in 101..150 -> 0.15
                 in 151..300 -> 0.1

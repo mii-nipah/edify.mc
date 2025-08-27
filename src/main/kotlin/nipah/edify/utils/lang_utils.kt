@@ -7,3 +7,8 @@ inline fun loop(block: () -> Boolean) {
         }
     }
 }
+
+sealed class LoopControl {
+    object Continue: LoopControl()
+    object Break: LoopControl()
+}

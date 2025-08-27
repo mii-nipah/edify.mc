@@ -11,6 +11,12 @@ import nipah.edify.utils.TickScheduler
 data class ChunkAccess(val level: Level) {
     private val chunks = Long2ObjectOpenHashMap<LevelChunk>()
 
+    init {
+        ChunkEvents.listenToChunkUnloadWeak(this) { cpos ->
+            chunks.remove(cpos.toLong())
+        }
+    }
+
     private inline fun BlockPos.toChunkPosNoAlloc(): Long {
         return ChunkPos.asLong(this)
     }
