@@ -21,7 +21,8 @@ object WorldData {
     private fun getScanWorker(level: Level): GroupScanWorker {
         return scans.getOrPut(level) {
             GroupScanWorker(
-                ChunkAccess(level)
+                ChunkAccess(level),
+                Configs.startup.worldData.maxConcurrentScans.get()
             )
         }
     }

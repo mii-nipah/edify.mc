@@ -13,10 +13,12 @@ import java.util.concurrent.CopyOnWriteArrayList
 
 class GroupScan(
     val chunks: ChunkAccess,
-    private val limit: Int = 100_000,
-    private val scanPerTick: Int = limit / 20,
-    private val blocksPerFloatingSupports: Int = 3,
-    private val floatingSupportsNaturalIslandLimit: Int = 5_000,
+    private val limit: Int = Configs.startup.groupScan.limit.get(),
+    private val scanPerTick: Int = Configs.startup.groupScan.scanPerTick.get(),
+    private val blocksPerFloatingSupports: Int =
+        Configs.startup.groupScan.blocksPerFloatingSupports.get(),
+    private val floatingSupportsNaturalIslandLimit: Int =
+        Configs.startup.groupScan.floatingSupportsNaturalIslandLimit.get(),
 ) {
     companion object {
         val currentlyScanning = CopyOnWriteArrayList<GroupScan>()

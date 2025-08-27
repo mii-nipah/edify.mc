@@ -3,10 +3,13 @@ package nipah.edify
 import net.minecraft.core.BlockPos
 import nipah.edify.pooling.LazyRingPool
 
-data class GroupScanWorker(val chunks: ChunkAccess) {
+data class GroupScanWorker(
+    val chunks: ChunkAccess,
+    val maxConcurrentScans: Int = 10,
+) {
     private val pool = LazyRingPool(
         { GroupScan(chunks) },
-        amount = 30,
+        amount = maxConcurrentScans,
     )
 
     suspend fun scan(seed: List<BlockPos>): List<BlockPos>? {

@@ -2,8 +2,10 @@ package nipah.edify
 
 import net.minecraft.client.Minecraft
 import net.neoforged.bus.api.SubscribeEvent
+import net.neoforged.fml.ModContainer
 import net.neoforged.fml.common.EventBusSubscriber
 import net.neoforged.fml.common.Mod
+import net.neoforged.fml.config.ModConfig
 import net.neoforged.fml.event.lifecycle.FMLClientSetupEvent
 import net.neoforged.fml.event.lifecycle.FMLCommonSetupEvent
 import net.neoforged.fml.event.lifecycle.FMLDedicatedServerSetupEvent
@@ -26,13 +28,23 @@ import thedarkcolour.kotlinforforge.neoforge.forge.runForDist
  */
 @Mod(modId)
 @EventBusSubscriber(bus = EventBusSubscriber.Bus.MOD)
-object Edify {
+class Edify(private val container: ModContainer) {
+    companion object {
+        val LOGGER: Logger = LogManager.getLogger(modId)
+
+        @SubscribeEvent
+        @JvmStatic
+        fun onCommonSetup(event: FMLCommonSetupEvent) {
+            LOGGER.log(Level.INFO, "Hello! This is working!")
+        }
+    }
 
     // the logger for our mod
-    val LOGGER: Logger = LogManager.getLogger(modId)
 
     init {
         LOGGER.log(Level.INFO, "Hello world!")
+
+        container.registerConfig(ModConfig.Type.STARTUP, Configs.startupSpec)
 
         // Register the KDeferredRegister to the mod-specific event bus
         ModBlocks.REGISTRY.register(MOD_BUS)
@@ -67,10 +79,5 @@ object Edify {
      */
     private fun onServerSetup(event: FMLDedicatedServerSetupEvent) {
         LOGGER.log(Level.INFO, "Server starting...")
-    }
-
-    @SubscribeEvent
-    fun onCommonSetup(event: FMLCommonSetupEvent) {
-        LOGGER.log(Level.INFO, "Hello! This is working!")
     }
 }

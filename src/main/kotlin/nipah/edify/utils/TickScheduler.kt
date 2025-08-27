@@ -9,6 +9,7 @@ import net.minecraft.server.MinecraftServer
 import net.neoforged.bus.api.SubscribeEvent
 import net.neoforged.neoforge.client.event.ClientTickEvent
 import net.neoforged.neoforge.event.tick.ServerTickEvent
+import nipah.edify.Configs
 import java.util.*
 import java.util.concurrent.ConcurrentLinkedDeque
 import java.util.concurrent.CopyOnWriteArrayList
@@ -22,7 +23,7 @@ object TickScheduler {
     private val serverTasks = CopyOnWriteArrayList<Task<MinecraftServer>>()
     private val serverNextTickTasks = ConcurrentLinkedDeque<(MinecraftServer) -> Unit>()
 
-    private val threads = Array(1) {
+    private val threads = Array(Configs.startup.threading.threads.get()) {
         ServerThreadedDispatcher(SchedulerThread())
     }
 
@@ -47,12 +48,20 @@ object TickScheduler {
                 name = "Edify Scheduler Thread",
                 priority = Thread.MIN_PRIORITY,
             ) {
-                val ticksPerSecond = 20f
+                val ticksPerSecond =
+                    Configs.startup.threading.threadsTicksPerSecondPerIteration.get().toFloat()
+                val sleepWhenServerIsNotAllowing =
+                    Configs.startup.threading.sleepWhenServerIsNotAllowing.get().toLong()
+                val directOperationsPerSleep =
+                    Configs.startup.threading.numberOfDirectlyProcessedOperationsPerSleep.get()
+                val directOperationsSleepTime =
+                    Configs.startup.threading.timeToSleepBetweenBatchesOfDirectOperations.get().toLong()
+
                 val tickTime = (1f / ticksPerSecond * 1000f).toLong()
                 var directlyRunning = 0
                 while (true) {
                     if (serverTickPass.not()) {
-                        Thread.sleep(100)
+                        Thread.sleep(sleepWhenServerIsNotAllowing)
                         continue
                     }
                     serverTickPass = false
@@ -62,8 +71,9 @@ object TickScheduler {
                         next = threadedNextTickTasks.poll()
                         directlyRunning++
                     }
-                    if (directlyRunning > 10) {
-                        Thread.sleep(250)
+                    if (directlyRunning > directOperationsPerSleep) {
+                        directlyRunning = 0
+                        Thread.sleep(directOperationsSleepTime)
                     }
                     Thread.sleep(tickTime)
                 }

@@ -41,11 +41,14 @@ object ChunkEvents {
         batchedListeners.add(listener)
     }
 
+    private val ticksBetweenBatches =
+        Configs.startup.chunkEvents.ticksToBatchRemovalOperations.get()
+
     private var serverTicks = 0
 
     @SubscribeEvent
     fun onServerTick(ev: ServerTickEvent.Post) {
-        if (serverTicks % 5 == 0) {
+        if (serverTicks % ticksBetweenBatches == 0) {
             if (queued.isEmpty().not()) {
                 for (cp in queued) {
                     // Notify batched listeners
