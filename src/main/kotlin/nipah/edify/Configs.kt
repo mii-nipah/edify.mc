@@ -28,19 +28,16 @@ object Configs {
                         comment("Number of threads to use for operation scheduling.")
                         comment("Increase this if you have a high core count and want faster operations.")
                         comment("Decrease this if you experience lag spikes when starting many operations.")
-                        comment("Default is 1.")
                         defineInRange("threads", 1, 1, 128)
                     }
                     threadsTicksPerSecondPerIteration = run {
                         comment("Number of ticks to process per iteration of each thread.")
                         comment("This is basically a regulation to how much will a thread wait in between processing schedules when they are available and the server signaled ready processing.")
-                        comment("Default is 20.")
                         defineInRange("threadsTicksPerSecondPerIteration", 20, 1, 1000)
                     }
                     sleepWhenServerIsNotAllowing = run {
                         comment("Number of milliseconds to sleep when the server is not allowing threaded operations.")
                         comment("Increase this if you want to reduce CPU usage when the server is busy, at the cost of responsiveness.")
-                        comment("Default is 100ms.")
                         defineInRange("sleepWhenServerIsNotAllowing", 100, 0, 10_000)
                     }
 
@@ -48,13 +45,11 @@ object Configs {
                         comment("Number of operations to process directly when the server is allowing threaded operations.")
                         comment("This is basically a way to make the processor sleep for a bit when it's processing many operations in a short period of time, decreasing changes of throttling.")
                         comment("Increase this if you want more responsivity at the cost of possible lag spikes.")
-                        comment("Default is 10.")
                         defineInRange("numberOfDirectlyProcessedOperationsPerSleep", 10, 1, 100_000)
                     }
                     timeToSleepBetweenBatchesOfDirectOperations = run {
                         comment("Number of milliseconds to sleep between batches of directly processed operations.")
                         comment("Increase this if you want to reduce CPU usage when the server is busy, at the cost of responsiveness.")
-                        comment("Default is 250ms.")
                         defineInRange("timeToSleepBetweenBatchesOfDirectOperations", 250, 15, 100_000)
                     }
                 }
@@ -70,7 +65,6 @@ object Configs {
                         comment("Number of server ticks to wait before processing queued block removal operations.")
                         comment("Increase this if you want to reduce the number of concurrent scans for floating structures by batching more removals together.")
                         comment("This should somewhat also reduce memory usage as less group scans will be needed to be instantiated, but will also increase processing time for individual removals.")
-                        comment("Default is 5 ticks (0.25 seconds).")
                         defineInRange("ticksToBatchRemovalOperations", 5, 1, 1000)
                     }
                 }
@@ -88,7 +82,6 @@ object Configs {
                         comment("Decrease this if you experience lag spikes when starting many operations.")
                         comment("The more you have, the higher your memory usage will be, so consider this seriously.")
                         comment("On the other hand, having more will make operations be processed more reliably and possibly faster.")
-                        comment("Default is 10.")
                         defineInRange("maxConcurrentScans", 10, 1, 1000)
                     }
                 }
@@ -109,7 +102,6 @@ object Configs {
                         comment("Decrease this if you want to reduce memory usage and lag spikes, at the cost of being unable to scan larger structures.")
                         comment("Having this number to high can mean having false positives in some specific circumstances. But having it too low will mean some floating structures will not be detected at all.")
                         comment("This is the hard stop that makes this system work, so tune it with consideration of how it works.")
-                        comment("Default is 100,000 blocks.")
                         defineInRange("limit", 100_000, 1_000, 1_000_000_000)
                     }
                     scanPerTick = run {
@@ -117,19 +109,17 @@ object Configs {
                         comment("Increase this if you want faster scans, at the cost of higher CPU usage and possibly lag spikes.")
                         comment("Decrease this if you want to reduce CPU usage and lag spikes, at the cost of slower scans.")
                         comment("If you have a slow CPU, it should be fine to set this to a lower value, as the scan will then be less likely to interrupt normal server operations, and it will give time to other scans in the queue to also make progress, and will help the ones that have floating structures to complete faster (as they have less blocks to scan overall).")
-                        comment("Limit / 20 should be a good value (default: 5,000 blocks per tick).")
+                        comment("Limit / 20 should be a good value.")
                         defineInRange("scanPerTick", 5_000, 100, 50_000)
                     }
                     blocksPerFloatingSupports = run {
                         comment("Number of blocks that can be supported by a single floating support.")
                         comment("Increase this if you want to reduce the number of floating supports needed for large structures.")
-                        comment("Default is 3 blocks per floating support.")
                         defineInRange("blocksPerFloatingSupports", 3, 1, 100)
                     }
                     floatingSupportsNaturalIslandLimit = run {
                         comment("Maximum number of blocks in a natural island.")
                         comment("It's an optimization number that helps a bit in the end dimension for the large floating islands, as it will stop scanning after a sufficiently high number of those blocks have been found.")
-                        comment("Default is 5,000 blocks.")
                         defineInRange("floatingSupportsNaturalIslandLimit", 5_000, 100, 100_000)
                     }
                 }
