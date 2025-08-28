@@ -88,6 +88,9 @@ class GroupScan(
         toVisit.enqueue(seed.asLong())
         toVisitSet.add(seed.asLong())
 
+        toVisitWeak.clear()
+        toVisitWeakSet.clear()
+
         metaGroup.clear()
 
         var solidHits = 0
@@ -128,10 +131,12 @@ class GroupScan(
             else {
                 solidHits++
             }
-//            if (block.isNonSupporting()) {
-//                solidHits += mapWeakLinks(pos, sizeLimitWhenHitSolid = 7)
-//                continue
-//            }
+            if (block.isNonSupporting()) {
+                if (toVisitWeakSet.add(longPos)) {
+                    toVisitWeak.enqueue(longPos)
+                }
+                continue
+            }
             if (visited.add(longPos).not()) {
                 continue
             }
@@ -145,6 +150,7 @@ class GroupScan(
                 toVisit.enqueue(longNpos)
             }
         }
+        solidHits += mapWeakLinks(64)
         val blocksPerSupport =
             solidHits / blocksPerFloatingSupports.coerceAtLeast(1)
         if (blocksPerSupport <= floatingHits) {
@@ -153,14 +159,15 @@ class GroupScan(
         group.addAll(metaGroup)
     }
 
-    suspend fun mapWeakLinks(seed: BlockPos, sizeLimitWhenHitSolid: Int): Int {
-        toVisitWeak.clear()
-        toVisitWeakSet.clear()
-        toVisitWeak.enqueue(seed.asLong())
+    suspend fun mapWeakLinks(sizeLimitWhenHitSolid: Int): Int {
+        if (toVisitWeak.isEmpty) {
+            return 0
+        }
+
         metaGroupWeak.clear()
 
-        var smallestPos = seed
-        var largestPos = seed
+        val smallestPos = BlockPos.of(toVisitWeak.firstLong()).mutable()
+        val largestPos = BlockPos.of(toVisitWeak.lastLong()).mutable()
         var hitSolid = false
 
         var iterTicks = 0
@@ -182,14 +189,10 @@ class GroupScan(
             val longPos = toVisitWeak.dequeueLong()
             pos.set(longPos)
 
-            if (pos < smallestPos) {
-                smallestPos = pos.immutable()
-            }
-            else if (pos > largestPos) {
-                largestPos = pos.immutable()
-            }
+            smallestPos.minAssign(pos)
+            largestPos.maxAssign(pos)
 
-            if (hitSolid) {
+            if (hitSolid.not()) {
                 val size = largestPos.distManhattan(smallestPos)
                 if (size > sizeLimitWhenHitSolid) {
                     break
@@ -209,13 +212,12 @@ class GroupScan(
             }
             if (block.isNonSupporting().not()) {
                 hitSolid = true
-                continue
             }
             metaGroupWeak.add(longPos)
-            pos.forEachNeighborFaceOrEdgeNoAlloc(npos) { npos ->
+            pos.forEachNeighborNoAlloc(npos) { npos ->
                 val longNpos = npos.asLong()
                 if (toVisitWeakSet.add(longNpos).not()) {
-                    return@forEachNeighborFaceOrEdgeNoAlloc
+                    return@forEachNeighborNoAlloc
                 }
                 toVisitWeak.enqueue(longNpos)
             }

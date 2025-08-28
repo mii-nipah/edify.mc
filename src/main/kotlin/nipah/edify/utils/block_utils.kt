@@ -303,6 +303,9 @@ fun BlockState.isDirtLike(): Boolean {
 
 private val nonSupportingCache = Int2BooleanOpenHashMap(1024)
 fun BlockState.isNonSupporting(): Boolean {
+    if (canBeReplaced()) {
+        return true
+    }
     val id = Block.getId(this)
     if (nonSupportingCache.containsKey(id))
         return nonSupportingCache.getOrDefault(id, false);
