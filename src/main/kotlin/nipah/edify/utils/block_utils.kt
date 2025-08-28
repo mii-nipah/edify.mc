@@ -58,6 +58,8 @@ fun test() {
     }
 }
 
+inline val BlockPos.neighborSize get() = 6
+
 inline fun BlockPos.forEachNeighborNoAlloc(
     with: BlockPos.MutableBlockPos,
     func: (BlockPos) -> Unit,
@@ -75,6 +77,48 @@ inline fun BlockPos.forEachNeighborNoAlloc(
     with.set(x + 1, y, z)
     func(with)
     with.set(x - 1, y, z)
+    func(with)
+    with.set(x, y - 1, z)
+    func(with)
+}
+
+inline fun BlockPos.forEachHorizontalNeighborNoAlloc(func: (BlockPos) -> Unit) =
+    forEachHorizontalNeighborNoAlloc(BlockPos.MutableBlockPos(), func)
+
+inline val BlockPos.neighborHorizontalSize get() = 4
+
+inline fun BlockPos.forEachHorizontalNeighborNoAlloc(
+    with: BlockPos.MutableBlockPos,
+    func: (BlockPos) -> Unit,
+) {
+    val x = this.x
+    val y = this.y
+    val z = this.z
+
+    with.set(x, y, z - 1)
+    func(with)
+    with.set(x, y, z + 1)
+    func(with)
+    with.set(x + 1, y, z)
+    func(with)
+    with.set(x - 1, y, z)
+    func(with)
+}
+
+inline val BlockPos.neighborVerticalSize get() = 2
+
+inline fun BlockPos.forEachVerticalNeighborNoAlloc(func: (BlockPos) -> Unit) =
+    forEachVerticalNeighborNoAlloc(BlockPos.MutableBlockPos(), func)
+
+inline fun BlockPos.forEachVerticalNeighborNoAlloc(
+    with: BlockPos.MutableBlockPos,
+    func: (BlockPos) -> Unit,
+) {
+    val x = this.x
+    val y = this.y
+    val z = this.z
+
+    with.set(x, y + 1, z)
     func(with)
     with.set(x, y - 1, z)
     func(with)
@@ -138,6 +182,8 @@ fun BlockPos.collectNeighborsTopBottom(): MutableList<BlockPos> {
     return neighbors
 }
 
+inline val BlockPos.neighborFaceOrEdgeSize get() = 18
+
 inline fun BlockPos.forEachNeighborFaceOrEdgeNoAlloc(
     with: BlockPos.MutableBlockPos,
     body: (BlockPos.MutableBlockPos) -> Unit,
@@ -157,7 +203,13 @@ inline fun BlockPos.forEachNeighborFaceOrEdgeNoAlloc(
     body: (BlockPos.MutableBlockPos) -> Unit,
 ) = forEachNeighborFaceOrEdgeNoAlloc(BlockPos.MutableBlockPos(), body)
 
+inline val BlockPos.neighborWithCornersSize get() = 26
+
 inline fun BlockPos.forEachNeighborWithCornersNoAlloc(body: (BlockPos.MutableBlockPos) -> Unit) {
+    forEachNeighborWithCornersNoAlloc(BlockPos.MutableBlockPos(), body)
+}
+
+inline fun BlockPos.forEachNeighborWithCornersNoAlloc(with: BlockPos.MutableBlockPos, body: (BlockPos.MutableBlockPos) -> Unit) {
     val m = BlockPos.MutableBlockPos()
     val x0 = this.x;
     val y0 = this.y;

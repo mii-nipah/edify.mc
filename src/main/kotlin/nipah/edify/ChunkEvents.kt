@@ -6,11 +6,14 @@ import net.minecraft.world.entity.item.FallingBlockEntity
 import net.minecraft.world.level.ChunkPos
 import net.minecraft.world.level.chunk.LevelChunk
 import net.neoforged.bus.api.SubscribeEvent
+import net.neoforged.neoforge.client.event.ClientTickEvent
 import net.neoforged.neoforge.event.level.BlockEvent
 import net.neoforged.neoforge.event.level.ChunkEvent
 import net.neoforged.neoforge.event.tick.ServerTickEvent
 import nipah.edify.client.render.BatchRenderer
 import nipah.edify.events.UniversalBlockEvent
+import nipah.edify.gizmos.Depth
+import nipah.edify.gizmos.Gizmos
 import nipah.edify.utils.TickScheduler
 import java.util.*
 
@@ -38,6 +41,22 @@ object ChunkEvents {
 //            Gizmos.block(wpos, Gizmos.Color.yellow, Depth.XRAY)
 //        }
 //    }
+
+    @SubscribeEvent
+    fun onClientTick(e: ClientTickEvent.Post) {
+        val map = WorldData.map ?: return
+        map.forEach { pos, ogW, weight, resistance, distribution ->
+            val wRes = (ogW * 3) + (ogW * resistance)
+            val ratio = weight / wRes.coerceAtLeast(1f)
+            val color = Gizmos.Color.lerp(Gizmos.Color.green, Gizmos.Color.red, ratio.coerceIn(0f, 1f))
+            if (ratio > 0.95f) {
+                Gizmos.blockFill(pos, Gizmos.Color.red, Depth.DEPTH_TEST)
+            }
+            else {
+                Gizmos.block(pos, color, Depth.DEPTH_TEST)
+            }
+        }
+    }
 
     private var serverLevel: ServerLevel? = null
 

@@ -34,6 +34,26 @@ object Gizmos {
         const val purple = 0xFF800080.toInt()
         const val pink = 0xFFFFC0CB.toInt()
         const val brown = 0xFFA52A2A.toInt()
+
+        fun lerp(c1: Int, c2: Int, t: Float): Int {
+            val a1 = (c1 ushr 24) and 0xFF
+            val r1 = (c1 ushr 16) and 0xFF
+            val g1 = (c1 ushr 8) and 0xFF
+            val b1 = c1 and 0xFF
+
+            val a2 = (c2 ushr 24) and 0xFF
+            val r2 = (c2 ushr 16) and 0xFF
+            val g2 = (c2 ushr 8) and 0xFF
+            val b2 = c2 and 0xFF
+
+            val a = (a1 + ((a2 - a1) * t)).toInt().coerceIn(0, 255)
+            val r = (r1 + ((r2 - r1) * t)).toInt().coerceIn(0, 255)
+            val g = (g1 + ((g2 - g1) * t)).toInt().coerceIn(0, 255)
+            val b = (b1 + ((b2 - b1) * t)).toInt().coerceIn(0, 255)
+
+            return (a shl 24) or (r shl 16) or (g shl 8) or b
+        }
+
     }
 
     // -------- Public API --------
@@ -66,6 +86,21 @@ object Gizmos {
             pos.x + 1.0, pos.y + 1.0, pos.z + 1.0
         ).inflate(inflate)
         push(BoxCmd(aabb, color, depth, ttl, tag))
+    }
+
+    fun blockFill(
+        pos: BlockPos,
+        color: Int,
+        depth: Depth = Depth.DEPTH_TEST,
+        ttl: Int = 0,
+        tag: String? = null,
+        inflate: Double = 0.03,
+    ) {
+        val aabb = AABB(
+            pos.x.toDouble(), pos.y.toDouble(), pos.z.toDouble(),
+            pos.x + 1.0, pos.y + 1.0, pos.z + 1.0
+        ).inflate(inflate)
+        push(BoxFillCmd(aabb, color, depth, ttl, tag))
     }
 
     fun circle(
@@ -123,6 +158,16 @@ object Gizmos {
         commands.forEach { it.renderLines(stagePose, xrayVC, depthTest = false) }
         buffers.endBatch(GizmoRenderTypes.linesNoDepth())
 
+        // FILLED x-ray (no depth)
+        val filledXrayVC = buffers.getBuffer(GizmoRenderTypes.filledNoDepth())
+        commands.forEach { it.renderFilled(stagePose, filledXrayVC, depthTest = false) }
+        buffers.endBatch(GizmoRenderTypes.filledNoDepth())
+
+        // FILLED depth-tested
+        val filledVC = buffers.getBuffer(GizmoRenderTypes.filledWithDepth())
+        commands.forEach { it.renderFilled(stagePose, filledVC, depthTest = true) }
+        buffers.endBatch(GizmoRenderTypes.filledWithDepth())
+
         stagePose.popPose()
 
         // world-text (batched separately)
@@ -163,6 +208,8 @@ object Gizmos {
             ttl -= 1
             return ttl < 0
         }
+
+        fun renderFilled(pose: PoseStack, vc: VertexConsumer, depthTest: Boolean) {}
 
         fun renderLines(pose: PoseStack, vc: VertexConsumer, depthTest: Boolean) {}
         fun renderText(pose: PoseStack, buffers: net.minecraft.client.renderer.MultiBufferSource, cam: Vec3) {}
@@ -230,6 +277,26 @@ object Gizmos {
             if ((depth == Depth.DEPTH_TEST) != depthTest) return
             val (r, g, b, a) = ColorUtil.rgba(color)
             LevelRenderer.renderLineBox(pose, vc, box, r, g, b, a)
+        }
+    }
+
+    private data class BoxFillCmd(
+        val box: AABB, val color: Int, val depth: Depth, override var ttl: Int, override val tag: String?,
+    ): Cmd {
+        override fun renderFilled(pose: PoseStack, vc: VertexConsumer, depthTest: Boolean) {
+            if ((depth == Depth.DEPTH_TEST) != depthTest) return
+            val (r, g, b, a) = ColorUtil.rgba(color)
+            val eps = 1.0 / 512.0
+            val x0 = box.minX + eps
+            val y0 = box.minY + eps
+            val z0 = box.minZ + eps
+            val x1 = box.maxX - eps
+            val y1 = box.maxY - eps
+            val z1 = box.maxZ - eps
+
+            LevelRenderer.addChainedFilledBoxVertices(
+                pose, vc, x0, y0, z0, x1, y1, z1, r, g, b, a
+            )
         }
     }
 

@@ -6,9 +6,11 @@ import net.minecraft.core.BlockPos
 import net.minecraft.world.level.ChunkPos
 import net.minecraft.world.level.Level
 import net.minecraft.world.level.LevelAccessor
+import net.minecraft.world.level.block.LiquidBlock
 import net.minecraft.world.level.chunk.LevelChunk
 import net.neoforged.bus.api.SubscribeEvent
 import net.neoforged.fml.common.EventBusSubscriber
+import net.neoforged.neoforge.server.ServerLifecycleHooks
 import nipah.edify.block.DebrisBlock
 import nipah.edify.chunks.ChunkDebris
 import nipah.edify.chunks.getDebrisStateAt
@@ -17,9 +19,23 @@ import nipah.edify.chunks.setDebrisAt
 import nipah.edify.client.render.createBatch
 import nipah.edify.events.UniversalBlockEvent
 import nipah.edify.utils.TickScheduler
+import nipah.edify.utils.forEachNeighborNoAlloc
 import nipah.edify.utils.preventNextUniversalEventFromRemovingBlock
 import nipah.edify.utils.toLocalX
 import nipah.edify.utils.toLocalZ
+import kotlin.collections.List
+import kotlin.collections.filter
+import kotlin.collections.first
+import kotlin.collections.forEach
+import kotlin.collections.getOrPut
+import kotlin.collections.isNotEmpty
+import kotlin.collections.listOf
+import kotlin.collections.map
+import kotlin.collections.mapNotNull
+import kotlin.collections.mutableListOf
+import kotlin.collections.mutableMapOf
+import kotlin.collections.set
+import kotlin.collections.toTypedArray
 
 @EventBusSubscriber
 object WorldData {
@@ -64,6 +80,10 @@ object WorldData {
         ChunkEvents.listenToBatchedBlockChanges { changes ->
             val added = changes
                 .mapNotNull { it.takeIf { it.third is BlockChangeKind.Placed }?.second }
+            if (added.isNotEmpty()) {
+                onBlocksAdded(added)
+            }
+
             val removed = changes
                 .filter { it.third is BlockChangeKind.Broken }
             val landed = changes
@@ -77,6 +97,18 @@ object WorldData {
         }
     }
 
+    private val integrityScan by lazy {
+        IntegrityScan(
+            ChunkAccess(ServerLifecycleHooks.getCurrentServer()!!.getLevel(Level.OVERWORLD)!!)
+        )
+    }
+    var map: IntegrityScan.Map? = null
+
+    fun onBlocksAdded(added: List<BlockPos>) = TickScheduler.serverScope.launch {
+        val (remove, scannedMap) = integrityScan.scan(added.first())
+        map = scannedMap
+    }
+
     fun mapChunk(chunk: LevelChunk) {
         val level = chunk.level ?: return
         val chunkPos = chunk.pos
@@ -85,6 +117,22 @@ object WorldData {
     }
 
     private fun onBlocksRemoved(removed: List<BlockPos>, scanWorker: GroupScanWorker) = TickScheduler.serverScope.launch {
+        val frem = removed.first()
+        var useF: BlockPos? = null
+        frem.forEachNeighborNoAlloc { npos ->
+            val chunk = scanWorker.chunks.at(npos) ?: return@forEachNeighborNoAlloc
+            val block = chunk.getBlockState(npos)
+            if (block.isAir || block.isEmpty || block.block is LiquidBlock) {
+                return@forEachNeighborNoAlloc
+            }
+            if (useF == null) {
+                useF = npos.immutable()
+            }
+        }
+        if (useF != null) {
+            val (remove, scannedMap) = integrityScan.scan(useF)
+            map = scannedMap
+        }
 
         val removedArray = removed.toTypedArray()
         val seed = listOf(

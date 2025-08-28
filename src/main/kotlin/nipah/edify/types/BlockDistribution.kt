@@ -5,37 +5,37 @@ import net.minecraft.world.level.block.state.BlockState
 import nipah.edify.utils.*
 
 @JvmInline
-value class BlockWeight(val value: Float) {
+value class BlockDistribution(val value: Half) {
     companion object {
-        fun of(state: BlockState): BlockWeight {
+        fun of(state: BlockState): BlockDistribution {
             if (state.isOf(Blocks.BEDROCK)) {
-                return BlockWeight(0f)
+                return BlockDistribution(0f.half)
             }
             if (state.isHeavy()) {
-                return BlockWeight(10f)
+                return BlockDistribution(0.3f.half)
             }
             if (state.isDirtLike()) {
-                return BlockWeight(2.5f)
+                return BlockDistribution(0.7f.half)
             }
             if (state.isNonSupporting()) {
-                return BlockWeight(0.001f)
+                return BlockDistribution(0.9f.half)
             }
             if (state.isLogLike()) {
-                return BlockWeight(1.5f)
+                return BlockDistribution(0.8f.half)
             }
             if (state.isPlankLike()) {
-                return BlockWeight(1f)
+                return BlockDistribution(0.9f.half)
             }
             if (state.isStoneLike()) {
-                return BlockWeight(5f)
+                return BlockDistribution(0.5f.half)
             }
             if (state.isExplosive()) {
-                return BlockWeight(0.7f)
+                return BlockDistribution(0.07f.half)
             }
             if (state.isAir) {
-                return BlockWeight(0f)
+                return BlockDistribution(0f.half)
             }
-            return BlockWeight(1f)
+            return BlockDistribution(0.5f.half)
         }
     }
 }
