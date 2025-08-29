@@ -10,6 +10,7 @@ import net.minecraft.world.level.block.LiquidBlock
 import net.minecraft.world.level.chunk.LevelChunk
 import net.neoforged.bus.api.SubscribeEvent
 import net.neoforged.fml.common.EventBusSubscriber
+import net.neoforged.neoforge.event.tick.ServerTickEvent
 import net.neoforged.neoforge.server.ServerLifecycleHooks
 import nipah.edify.block.DebrisBlock
 import nipah.edify.chunks.ChunkDebris
@@ -20,22 +21,13 @@ import nipah.edify.client.render.createBatch
 import nipah.edify.events.UniversalBlockEvent
 import nipah.edify.utils.TickScheduler
 import nipah.edify.utils.forEachNeighborNoAlloc
+import nipah.edify.utils.nearbyPos
+import nipah.edify.utils.pickItem
 import nipah.edify.utils.preventNextUniversalEventFromRemovingBlock
 import nipah.edify.utils.toLocalX
 import nipah.edify.utils.toLocalZ
-import kotlin.collections.List
-import kotlin.collections.filter
-import kotlin.collections.first
-import kotlin.collections.forEach
-import kotlin.collections.getOrPut
-import kotlin.collections.isNotEmpty
-import kotlin.collections.listOf
-import kotlin.collections.map
-import kotlin.collections.mapNotNull
-import kotlin.collections.mutableListOf
-import kotlin.collections.mutableMapOf
 import kotlin.collections.set
-import kotlin.collections.toTypedArray
+import kotlin.random.Random
 
 @EventBusSubscriber
 object WorldData {
@@ -76,12 +68,31 @@ object WorldData {
         }
     }
 
+    private var tickCounter = 0
+
+    @SubscribeEvent
+    fun serverTick(e: ServerTickEvent.Post) {
+        tickCounter++
+        if (tickCounter % 20 != 0) return
+
+        val server = e.server
+        val player = Random.pickItem(server.playerList.players) ?: return
+        val level = player.level()
+        val pos = player.blockPosition()
+        val rpos = Random.nearbyPos(pos, 50, -30..30)
+        val block = level.getBlockState(rpos)
+        if (block.isAir || block.isEmpty) return
+        TickScheduler.serverScope.launch {
+            applyIntegrityScan(rpos, level)
+        }
+    }
+
     init {
         ChunkEvents.listenToBatchedBlockChanges { changes ->
             val added = changes
                 .mapNotNull { it.takeIf { it.third is BlockChangeKind.Placed }?.second }
             if (added.isNotEmpty()) {
-                onBlocksAdded(added)
+                onBlocksAdded(added, changes.first().first.level!!)
             }
 
             val removed = changes
@@ -104,9 +115,15 @@ object WorldData {
     }
     var map: IntegrityScan.Map? = null
 
-    fun onBlocksAdded(added: List<BlockPos>) = TickScheduler.serverScope.launch {
-        val (remove, scannedMap) = integrityScan.scan(added.first())
-        map = scannedMap
+    fun onBlocksAdded(added: List<BlockPos>, level: Level) = TickScheduler.serverScope.launch {
+        applyIntegrityScan(added.first(), level)
+    }
+
+    suspend fun applyIntegrityScan(at: BlockPos, level: Level) {
+        val (removed, _) = integrityScan.scan(at)
+        removed.forEach { pos ->
+            level.destroyBlock(pos, false)
+        }
     }
 
     fun mapChunk(chunk: LevelChunk) {
@@ -130,8 +147,7 @@ object WorldData {
             }
         }
         if (useF != null) {
-            val (remove, scannedMap) = integrityScan.scan(useF)
-            map = scannedMap
+            applyIntegrityScan(useF, scanWorker.chunks.level)
         }
 
         val removedArray = removed.toTypedArray()
