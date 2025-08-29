@@ -10,6 +10,7 @@ import net.minecraft.core.BlockPos
 import net.minecraft.world.level.ChunkPos
 import net.minecraft.world.level.block.LiquidBlock
 import nipah.edify.utils.*
+import nipah.edify.workers.UrWorker
 import java.util.concurrent.CopyOnWriteArrayList
 
 class GroupScan(
@@ -20,7 +21,7 @@ class GroupScan(
         Configs.startup.groupScan.blocksPerFloatingSupports.get(),
     private val floatingSupportsNaturalIslandLimit: Int =
         Configs.startup.groupScan.floatingSupportsNaturalIslandLimit.get(),
-) {
+): UrWorker {
     companion object {
         val currentlyScanning = CopyOnWriteArrayList<GroupScan>()
     }
@@ -41,7 +42,7 @@ class GroupScan(
         group.clear()
     }
 
-    var isRunning = false
+    override var isRunning = false
         private set
 
     suspend fun scan(seed: List<BlockPos>): List<BlockPos>? {

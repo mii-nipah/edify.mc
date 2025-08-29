@@ -18,6 +18,7 @@ import nipah.edify.chunks.getDebrisStateAt
 import nipah.edify.chunks.removeDebrisData
 import nipah.edify.chunks.setDebrisAt
 import nipah.edify.client.render.createBatch
+import nipah.edify.collections.ConcurrentUniqueQueue
 import nipah.edify.events.UniversalBlockEvent
 import nipah.edify.utils.TickScheduler
 import nipah.edify.utils.forEachNeighborNoAlloc
@@ -27,7 +28,6 @@ import nipah.edify.utils.pickItem
 import nipah.edify.utils.preventNextUniversalEventFromRemovingBlock
 import nipah.edify.utils.toLocalX
 import nipah.edify.utils.toLocalZ
-import java.util.concurrent.ConcurrentLinkedQueue
 import kotlin.collections.set
 import kotlin.random.Random
 
@@ -70,8 +70,10 @@ object WorldData {
         }
     }
 
+    data class QueuedRemoval(val seed: List<BlockPos>, val worker: GroupScanWorker)
+
     private var tickCounter = 0
-    private var removalQueue = ConcurrentLinkedQueue<Pair<List<BlockPos>, GroupScanWorker>>()
+    private var removalQueue = ConcurrentUniqueQueue<QueuedRemoval>()
 
     @SubscribeEvent
     fun serverTick(e: ServerTickEvent.Post) {
@@ -89,12 +91,20 @@ object WorldData {
             }
         }
         if (tickCounter % 10 == 0) {
-            val (seed, worker) = removalQueue.poll() ?: return
-            if (worker.isAvailable().not) {
-                removalQueue.add(seed to worker)
-                return
+            if (removalQueue.size > 1000) {
+                removalQueue =
+                    ConcurrentUniqueQueue(removalQueue.toList().distinct().shuffled().take(100))
             }
-            onBlocksRemoved(seed, worker)
+
+            removalQueue.peekToConsume { (seed, worker) ->
+                if (worker.isAvailable().not) {
+                    false
+                }
+                else {
+                    onBlocksRemoved(seed, worker)
+                    true
+                }
+            }
         }
     }
 
@@ -145,31 +155,28 @@ object WorldData {
     }
 
     private fun onBlocksRemoved(removed: List<BlockPos>, scanWorker: GroupScanWorker) = TickScheduler.serverScope.launch {
-        val frem = removed.first()
-        var useF: BlockPos? = null
-        frem.forEachNeighborNoAlloc { npos ->
-            val chunk = scanWorker.chunks.at(npos) ?: return@forEachNeighborNoAlloc
-            val block = chunk.getBlockState(npos)
-            if (block.isAir || block.isEmpty || block.block is LiquidBlock) {
-                return@forEachNeighborNoAlloc
-            }
-            if (useF == null) {
-                useF = npos.immutable()
-            }
-        }
-        if (useF != null) {
-            applyIntegrityScan(useF, scanWorker.chunks.level)
-        }
-
-        val removedArray = removed.toTypedArray()
-        val seed = listOf(
-            *removedArray,
-//            *removed.flatMap { it.collectNeighborsWithCornersUpFirst() }.toTypedArray()
-        )
-
+        val seed = removed.distinct()
         if (scanWorker.isAvailable().not) {
-            removalQueue.add(seed to scanWorker)
+            removalQueue.add(QueuedRemoval(seed, scanWorker))
             return@launch
+        }
+
+        run {
+            val frem = removed.first()
+            var useF: BlockPos? = null
+            frem.forEachNeighborNoAlloc { npos ->
+                val chunk = scanWorker.chunks.at(npos) ?: return@forEachNeighborNoAlloc
+                val block = chunk.getBlockState(npos)
+                if (block.isAir || block.isEmpty || block.block is LiquidBlock) {
+                    return@forEachNeighborNoAlloc
+                }
+                if (useF == null) {
+                    useF = npos.immutable()
+                }
+            }
+            if (useF != null) {
+                applyIntegrityScan(useF, scanWorker.chunks.level)
+            }
         }
 
         val toRemove = scanWorker.scan(seed) ?: return@launch
