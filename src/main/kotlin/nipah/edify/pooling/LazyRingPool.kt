@@ -8,6 +8,19 @@ data class LazyRingPool<T>(
 ) {
     private var index = 0
 
+    val isEmpty: Boolean
+        get() = items.isEmpty()
+
+    val canGrow: Boolean
+        get() = items.size < amount
+
+    fun any(predicate: (T) -> Boolean): Boolean {
+        for (item in items) {
+            if (predicate(item)) return true
+        }
+        return false
+    }
+
     fun borrow(): T {
         if (items.size < amount) {
             items.add(factory())

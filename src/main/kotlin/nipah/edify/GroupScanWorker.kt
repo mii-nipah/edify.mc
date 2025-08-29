@@ -12,6 +12,10 @@ data class GroupScanWorker(
         amount = maxConcurrentScans,
     )
 
+    fun isAvailable() = run {
+        pool.isEmpty || pool.canGrow || pool.any { it.isRunning.not() }
+    }
+
     suspend fun scan(seed: List<BlockPos>): List<BlockPos>? {
         pool.borrowIn { group ->
             if (group.isRunning) {

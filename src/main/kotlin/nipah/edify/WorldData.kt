@@ -22,10 +22,12 @@ import nipah.edify.events.UniversalBlockEvent
 import nipah.edify.utils.TickScheduler
 import nipah.edify.utils.forEachNeighborNoAlloc
 import nipah.edify.utils.nearbyPos
+import nipah.edify.utils.not
 import nipah.edify.utils.pickItem
 import nipah.edify.utils.preventNextUniversalEventFromRemovingBlock
 import nipah.edify.utils.toLocalX
 import nipah.edify.utils.toLocalZ
+import java.util.concurrent.ConcurrentLinkedQueue
 import kotlin.collections.set
 import kotlin.random.Random
 
@@ -69,21 +71,30 @@ object WorldData {
     }
 
     private var tickCounter = 0
+    private var removalQueue = ConcurrentLinkedQueue<Pair<List<BlockPos>, GroupScanWorker>>()
 
     @SubscribeEvent
     fun serverTick(e: ServerTickEvent.Post) {
         tickCounter++
-        if (tickCounter % 20 != 0) return
-
-        val server = e.server
-        val player = Random.pickItem(server.playerList.players) ?: return
-        val level = player.level()
-        val pos = player.blockPosition()
-        val rpos = Random.nearbyPos(pos, 50, -30..30)
-        val block = level.getBlockState(rpos)
-        if (block.isAir || block.isEmpty) return
-        TickScheduler.serverScope.launch {
-            applyIntegrityScan(rpos, level)
+        if (tickCounter % 20 == 0) {
+            val server = e.server
+            val player = Random.pickItem(server.playerList.players) ?: return
+            val level = player.level()
+            val pos = player.blockPosition()
+            val rpos = Random.nearbyPos(pos, 50, -30..30)
+            val block = level.getBlockState(rpos)
+            if (block.isAir || block.isEmpty) return
+            TickScheduler.serverScope.launch {
+                applyIntegrityScan(rpos, level)
+            }
+        }
+        if (tickCounter % 10 == 0) {
+            val (seed, worker) = removalQueue.poll() ?: return
+            if (worker.isAvailable().not) {
+                removalQueue.add(seed to worker)
+                return
+            }
+            onBlocksRemoved(seed, worker)
         }
     }
 
@@ -155,6 +166,11 @@ object WorldData {
             *removedArray,
 //            *removed.flatMap { it.collectNeighborsWithCornersUpFirst() }.toTypedArray()
         )
+
+        if (scanWorker.isAvailable().not) {
+            removalQueue.add(seed to scanWorker)
+            return@launch
+        }
 
         val toRemove = scanWorker.scan(seed) ?: return@launch
 
