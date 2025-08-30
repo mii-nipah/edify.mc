@@ -45,8 +45,8 @@ object ChunkEvents {
     @SubscribeEvent
     fun onClientTick(e: ClientTickEvent.Post) {
         val map = WorldData.map ?: return
-        map.forEach { pos, ogW, weight, resistance, distribution ->
-            val wRes = (ogW * 3) + (ogW * resistance)
+        map.forEach { pos, ogW, weight, resistance, _, _ ->
+            val wRes = (ogW) + (ogW * resistance)
             val ratio = weight / wRes.coerceAtLeast(1f)
             val color = Gizmos.Color.lerp(Gizmos.Color.green, Gizmos.Color.red, ratio.coerceIn(0f, 1f))
             if (ratio > 0.95f) {

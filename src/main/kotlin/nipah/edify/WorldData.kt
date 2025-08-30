@@ -86,9 +86,9 @@ object WorldData {
             val rpos = Random.nearbyPos(pos, 50, -30..30)
             val block = level.getBlockState(rpos)
             if (block.isAir || block.isEmpty) return
-            TickScheduler.serverScope.launch {
-                applyIntegrityScan(rpos, level)
-            }
+//            TickScheduler.serverScope.launch {
+//                applyIntegrityScan(rpos, level)
+//            }
         }
         if (tickCounter % 10 == 0) {
             if (removalQueue.size > 1000) {
@@ -135,16 +135,21 @@ object WorldData {
         )
     }
     var map: IntegrityScan.Map? = null
+    var toRemoveMap: Set<BlockPos>? = null
 
     fun onBlocksAdded(added: List<BlockPos>, level: Level) = TickScheduler.serverScope.launch {
         applyIntegrityScan(added.first(), level)
     }
 
     suspend fun applyIntegrityScan(at: BlockPos, level: Level) {
-        val (removed, _) = integrityScan.scan(at)
-        removed.forEach { pos ->
-            level.destroyBlock(pos, false)
-        }
+        return
+        val (removed, map) = integrityScan.scan(at)
+        this.map = map
+        this.toRemoveMap = removed.toSet()
+
+//        removed.forEach { pos ->
+//            level.destroyBlock(pos, false)
+//        }
     }
 
     fun mapChunk(chunk: LevelChunk) {

@@ -27,7 +27,7 @@ value class BlockResistance(val value: Half) {
                 return BlockResistance(3.5f.half)
             }
             if (state.isStoneLike()) {
-                return BlockResistance(1.5f.half)
+                return BlockResistance(7f.half)
             }
             if (state.isExplosive()) {
                 return BlockResistance(0.07f.half)

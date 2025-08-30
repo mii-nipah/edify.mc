@@ -12,25 +12,25 @@ value class BlockDistribution(val value: Half) {
                 return BlockDistribution(0f.half)
             }
             if (state.isHeavy()) {
-                return BlockDistribution(0.3f.half)
+                return BlockDistribution(0.9f.half)
             }
             if (state.isDirtLike()) {
-                return BlockDistribution(0.7f.half)
+                return BlockDistribution(0.2f.half)
             }
             if (state.isNonSupporting()) {
-                return BlockDistribution(0.9f.half)
+                return BlockDistribution(0.1f.half)
             }
             if (state.isLogLike()) {
-                return BlockDistribution(0.8f.half)
+                return BlockDistribution(0.4f.half)
             }
             if (state.isPlankLike()) {
-                return BlockDistribution(0.9f.half)
-            }
-            if (state.isStoneLike()) {
                 return BlockDistribution(0.5f.half)
             }
+            if (state.isStoneLike()) {
+                return BlockDistribution(0.8f.half)
+            }
             if (state.isExplosive()) {
-                return BlockDistribution(0.07f.half)
+                return BlockDistribution(0.17f.half)
             }
             if (state.isAir) {
                 return BlockDistribution(0f.half)
