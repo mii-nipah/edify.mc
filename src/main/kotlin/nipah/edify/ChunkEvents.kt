@@ -50,7 +50,7 @@ object ChunkEvents {
             val ratio = weight / wRes.coerceAtLeast(1f)
             val color = Gizmos.Color.lerp(Gizmos.Color.green, Gizmos.Color.red, ratio.coerceIn(0f, 1f))
             if (ratio > 0.95f) {
-                Gizmos.blockFill(pos, Gizmos.Color.red, Depth.DEPTH_TEST)
+                Gizmos.blockFill(pos, Gizmos.Color.red, Depth.XRAY)
             }
             else {
                 Gizmos.block(pos, color, Depth.DEPTH_TEST)

@@ -142,7 +142,6 @@ object WorldData {
     }
 
     suspend fun applyIntegrityScan(at: BlockPos, level: Level) {
-        return
         val (removed, map) = integrityScan.scan(at)
         this.map = map
         this.toRemoveMap = removed.toSet()

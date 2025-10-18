@@ -27,7 +27,7 @@ object GizmoRenderTypes {
         DefaultVertexFormat.POSITION_COLOR,
         VertexFormat.Mode.QUADS, 256, false, false,
         RenderType.CompositeState.builder()
-            .setShaderState(RenderType.RENDERTYPE_LINES_SHADER)
+            .setShaderState(RenderType.POSITION_COLOR_SHADER)
             .setTransparencyState(RenderStateShard.TRANSLUCENT_TRANSPARENCY)
             .setDepthTestState(RenderStateShard.NO_DEPTH_TEST)
             .setCullState(RenderStateShard.CULL)
@@ -41,9 +41,11 @@ object GizmoRenderTypes {
         DefaultVertexFormat.POSITION_COLOR,
         VertexFormat.Mode.QUADS, 512, false, false,
         RenderType.CompositeState.builder()
-            .setShaderState(RenderType.RENDERTYPE_LINES_SHADER)
+            .setShaderState(RenderType.POSITION_COLOR_SHADER)
             .setTransparencyState(RenderStateShard.TRANSLUCENT_TRANSPARENCY)
             .setDepthTestState(RenderStateShard.LEQUAL_DEPTH_TEST)
+            .setWriteMaskState(RenderStateShard.COLOR_DEPTH_WRITE)
+            .setLayeringState(RenderStateShard.VIEW_OFFSET_Z_LAYERING)
             .setCullState(RenderStateShard.CULL)
             .createCompositeState(false)
     )

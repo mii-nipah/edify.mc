@@ -35,6 +35,9 @@ data class ChunkAccess(val level: Level) {
         return at(ChunkPos.asLong(blockPos))
     }
 
+    fun getBlockStateAt(blockPos: BlockPos) =
+        at(blockPos)?.getBlockState(blockPos)
+
     suspend fun backgroundAt(blockPos: BlockPos): LevelChunk? {
         val longChunkPos = ChunkPos.asLong(blockPos)
         val chunk = chunks[longChunkPos]

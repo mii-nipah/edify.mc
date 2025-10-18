@@ -8,6 +8,7 @@ import net.minecraft.tags.TagKey
 import net.minecraft.world.level.LevelReader
 import net.minecraft.world.level.block.Block
 import net.minecraft.world.level.block.Blocks
+import net.minecraft.world.level.block.LiquidBlock
 import net.minecraft.world.level.block.SnowLayerBlock
 import net.minecraft.world.level.block.state.BlockState
 import nipah.edify.tags.ModTags
@@ -103,6 +104,24 @@ inline fun BlockPos.forEachHorizontalNeighborNoAlloc(
     func(with)
     with.set(x - 1, y, z)
     func(with)
+}
+
+inline val BlockPos.neighborHorizontalWithCornersSize get() = 8
+inline fun BlockPos.forEachHorizontalNeighborWithCornersNoAlloc(
+    with: BlockPos.MutableBlockPos,
+    func: (BlockPos) -> Unit,
+) {
+    val x = this.x
+    val y = this.y
+    val z = this.z
+    with.set(x, y, z - 1); func(with)
+    with.set(x, y, z + 1); func(with)
+    with.set(x + 1, y, z); func(with)
+    with.set(x - 1, y, z); func(with)
+    with.set(x + 1, y, z - 1); func(with)
+    with.set(x + 1, y, z + 1); func(with)
+    with.set(x - 1, y, z - 1); func(with)
+    with.set(x - 1, y, z + 1); func(with)
 }
 
 inline val BlockPos.neighborVerticalSize get() = 2
@@ -437,3 +456,10 @@ fun BlockState.isFloating(): Boolean {
     floatingCache.put(id, result)
     return result
 }
+
+inline val BlockState?.isNothing
+    get() =
+        this == null || isAir || isEmpty
+inline val BlockState?.isNothingOrLiquid
+    get() =
+        this == null || isNothing || block is LiquidBlock

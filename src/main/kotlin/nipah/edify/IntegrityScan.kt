@@ -2,7 +2,9 @@ package nipah.edify
 
 import it.unimi.dsi.fastutil.longs.Long2FloatOpenHashMap
 import it.unimi.dsi.fastutil.longs.Long2LongOpenHashMap
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.yield
 import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
 import net.minecraft.world.level.block.Blocks
@@ -295,8 +297,12 @@ class IntegrityScan(
             buffer[pos.asLong()] = w
         }
 
-        fun updateWeight(pos: BlockPos, w: Float) {
+        fun addWeight(pos: BlockPos, w: Float) {
             buffer[pos.asLong()] += w
+        }
+
+        fun removeWeight(pos: BlockPos, w: Float) {
+            buffer[pos.asLong()] -= w
         }
     }
 
@@ -311,7 +317,7 @@ class IntegrityScan(
                 val longPos = entry.longKey
                 val w = entry.floatValue
 //                updateWeight(BlockPos.of(longPos), w)
-                updateWeight(BlockPos.of(longPos)) { it + w }
+                updateWeight(BlockPos.of(longPos)) { (it + w).coerceAtLeast(0.1f).coerceNaN(0.1f) }
             }
         }
     }
@@ -321,66 +327,122 @@ class IntegrityScan(
 
         val npos = BlockPos.MutableBlockPos()
 
-        fun applyGravity() = map.applyChanges {
-            map.forEach { pos, originalWeight, weight, resistance, distribution, support ->
-                npos.set(pos)
-                npos.move(Direction.DOWN)
-                if (npos !in map) {
-                    val chunk = chunks.at(npos) ?: return@forEach
-                    val state = chunk.getBlockState(npos)
-                    if (state.isAir || state.isEmpty) {
-                        val newW = (weight * (1f - support)) * 1.01f
-                        updateWeight(pos, newW)
-                    }
-                    else if (state.block is LiquidBlock) {
-//                        val newW = weight * (1f - support) * 0.5f
-//                        setWeight(pos, newW)
-                        updateWeight(pos, -weight * 0.5f * (1f - support))
-                    }
-                    else {
-//                        val newW = weight * 0.01f
-                        updateWeight(pos, -weight * 0.5f)
-                    }
-                    return@forEach
-                }
-                val below = map.get(npos)
-                val spread = (weight)
-                updateWeight(npos, spread * below.distribution)
-                updateWeight(pos, -spread * distribution)
-            }
-            true
-        }
+        fun timestep() {
+            fun edgeCoeff(sHere: Float, sThere: Float) = kotlin.math.min(sHere, sThere) // symmetric, in [0,1]
 
-        fun applyEquilibrium() = map.applyChanges {
-            map.forEach { pos, originalWeight, weight, resistance, distribution, support ->
-                val spread = weight / pos.neighborHorizontalSize
-                var spreadAmount = 0f
-                pos.forEachHorizontalNeighborNoAlloc(npos) { npos ->
-                    if (npos !in map) {
-                        val chunk = chunks.at(npos) ?: return@forEachHorizontalNeighborNoAlloc
-                        val state = chunk.getBlockState(npos)
-                        if (state.isAir || state.isEmpty || state.block is LiquidBlock) {
-                            return@forEachHorizontalNeighborNoAlloc
+            map.applyChanges {
+                map.forEach { pos, originalWeight, _, _, distribution, support ->
+
+                    var removeTotal = 0f
+
+                    // ---------- DOWN ----------
+                    run {
+                        var outD = 0f
+                        val budget = (originalWeight * distribution).coerceIn(0f, originalWeight)
+
+                        npos.set(pos); npos.move(Direction.DOWN)
+                        if (npos in map) {
+                            val n = map.get(npos)
+                            val x = budget * edgeCoeff(support, n.support)
+                            if (x > 0f) {
+                                addWeight(npos, x)
+                                outD += x
+                            }
                         }
-                        spreadAmount += spread
-                        return@forEachHorizontalNeighborNoAlloc
+                        else {
+                            // solid ground below? => sink
+                            if (!chunks.getBlockStateAt(npos).isNothingOrLiquid) {
+                                outD += budget
+                            }
+                            // else (air below outside map): choose whether “falling” is a sink; if yes:
+                            // else outD += budget
+                        }
+                        removeTotal += outD
                     }
-                    val neighbor = map.get(npos)
-                    val effectiveSpread = spread * (neighbor.support)
-                    updateWeight(npos, effectiveSpread)
-                    spreadAmount += effectiveSpread
+
+                    // ---------- HORIZONTAL (with corners) ----------
+                    run {
+                        var outH = 0f
+                        val hFrac = 0.25f                                  // tune [0..1]
+                        val budget = (originalWeight * hFrac).coerceIn(0f, originalWeight)
+
+                        // Gather valid neighbors + weights (one pass)
+                        val neighbors = mutableListOf<Pair<BlockPos, Float>>()
+                        var wsum = 0f
+                        pos.forEachHorizontalNeighborWithCornersNoAlloc(npos) { nn ->
+                            if (nn in map) {
+                                val n = map.get(nn)
+                                val e = edgeCoeff(support, n.support)
+                                if (e > 0f) {
+                                    neighbors += (BlockPos(nn) to e)       // copy coord; don't reuse npos
+                                    wsum += e
+                                }
+                            }
+                        }
+
+                        if (wsum > 0f) {
+                            // Distribute entire budget across valid neighbors
+                            for ((nn, e) in neighbors) {
+                                val x = budget * (e / wsum)
+                                if (x > 0f) {
+                                    addWeight(nn, x)
+                                    outH += x
+                                }
+                            }
+                        }
+                        else {
+                            // No valid in-map neighbors. If any horizontal neighbor is solid (wall),
+                            // sink the whole horizontal budget; if only air, do nothing.
+                            var touchesSolid = false
+                            pos.forEachHorizontalNeighborWithCornersNoAlloc(npos) { nn ->
+                                if (nn !in map && !chunks.getBlockStateAt(nn).isNothingOrLiquid) {
+                                    touchesSolid = true
+                                }
+                            }
+                            if (touchesSolid) outH += budget
+                        }
+
+                        removeTotal += outH
+                    }
+
+                    // ---------- UP (paired pull from above) ----------
+                    run {
+                        npos.set(pos); npos.move(Direction.DOWN)
+                        val belowIsAir = chunks.getBlockStateAt(npos).isNothingOrLiquid
+                        if (belowIsAir) {
+                            npos.set(pos); npos.move(Direction.UP)
+                            if (npos in map) {
+                                val upFrac = 0.05f                          // small
+                                val up = (originalWeight * upFrac).coerceAtLeast(0f)
+                                if (up > 0f) {
+                                    removeWeight(npos, up)                  // remove from above
+                                    addWeight(pos, up)                      // add here (no remove from pos)
+                                }
+                            }
+                        }
+                    }
+
+                    // Remove exactly what this cell sent out (down + horizontal sinks/transfers)
+                    removeWeight(pos, removeTotal.coerceAtMost(originalWeight))
                 }
-                updateWeight(pos, -spreadAmount)
-//                setWeight(pos, (weight - spreadAmount).coerceAtLeast(0.1f))
+                true
             }
-            true
         }
-        repeat(5) {
-            applyGravity()
-            applyEquilibrium()
+        repeat(0) {
+            timestep()
         }
-        repeat(7) {
-            applyEquilibrium()
+        TickScheduler.serverScope.launch {
+            suspend fun sleep(time: Int) {
+                val ticks = time / 50
+                if (ticks <= 0) return
+                repeat(ticks) {
+                    yield()
+                }
+            }
+            repeat(500) {
+                timestep()
+                sleep(1000000)
+            }
         }
     }
 
