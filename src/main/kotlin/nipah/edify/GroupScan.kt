@@ -50,12 +50,14 @@ class GroupScan(
             isRunning = true
             currentlyScanning.add(this)
             clear()
+            Edify.LOGGER.info("[GroupScan] Starting scan with ${seed.size} seeds")
             val seed = if (seed.size > 1000) seed.takeRandomNPercentile(0.01f) else seed
             withContext(TickScheduler.roundRobinDispatcher()) {
                 for (item in seed) {
                     mapGroupBranches(item)
                 }
             }
+            Edify.LOGGER.info("[GroupScan] Scan complete, group size=${group.size}")
             return group.map { BlockPos.of(it) }
         }
         catch (e: Throwable) {
@@ -104,6 +106,7 @@ class GroupScan(
         while (toVisit.isNotEmpty()) {
             currentCoroutineContext().ensureActive()
             if (visited.size > limit || toVisitSet.size > limit) {
+                Edify.LOGGER.info("[GroupScan] Hit limit at pos=$pos, visited=${visited.size}, toVisit=${toVisitSet.size}")
                 return
             }
             iterTicks++
@@ -115,12 +118,16 @@ class GroupScan(
             val longPos = toVisit.dequeueLong()
             pos.set(longPos)
 
-            val chunk = chunks.backgroundAt(pos) ?: return
+            val chunk = chunks.backgroundAt(pos) ?: run {
+                Edify.LOGGER.info("[GroupScan] Chunk null at pos=$pos")
+                return
+            }
             val block = chunk.getBlockState(pos)
             if (block.isAir || block.isEmpty || block.block is LiquidBlock) {
                 continue
             }
             if (isFoundation(pos)) {
+                Edify.LOGGER.info("[GroupScan] Hit foundation at pos=$pos, block=$block, metaGroup size=${metaGroup.size}")
                 return
             }
             if (block.isFloating()) {
@@ -152,11 +159,18 @@ class GroupScan(
             }
         }
         solidHits += mapWeakLinks(64)
-        val blocksPerSupport =
-            solidHits / blocksPerFloatingSupports.coerceAtLeast(1)
-        if (blocksPerSupport <= floatingHits) {
+        if (floatingHits > 0) {
+            val blocksPerSupport =
+                solidHits / blocksPerFloatingSupports.coerceAtLeast(1)
+            if (blocksPerSupport <= floatingHits) {
+                Edify.LOGGER.info("[GroupScan] Floating ratio check failed: solidHits=$solidHits, floatingHits=$floatingHits, blocksPerSupport=$blocksPerSupport")
+                return
+            }
+        }
+        if (metaGroup.isEmpty()) {
             return
         }
+        Edify.LOGGER.info("[GroupScan] Adding ${metaGroup.size} blocks to fall group")
         group.addAll(metaGroup)
     }
 

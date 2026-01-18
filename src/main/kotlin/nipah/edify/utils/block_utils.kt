@@ -357,6 +357,34 @@ fun BlockState.isStoneLike(): Boolean {
     return result
 }
 
+private val naturalTerrainCache = Int2BooleanOpenHashMap(1024)
+fun BlockState.isNaturalTerrain(): Boolean {
+    val id = Block.getId(this)
+    if (naturalTerrainCache.containsKey(id))
+        return naturalTerrainCache.getOrDefault(id, false)
+    val result = run {
+        val inTags = hasAny(
+            BlockTags.BASE_STONE_OVERWORLD,
+            BlockTags.BASE_STONE_NETHER,
+            BlockTags.STONE_ORE_REPLACEABLES,
+            BlockTags.DEEPSLATE_ORE_REPLACEABLES,
+            BlockTags.DIRT,
+            BlockTags.SAND,
+            BlockTags.TERRACOTTA,
+            BlockTags.NYLIUM,
+        )
+        if (inTags) return@run true
+        return@run this.isOf(Blocks.GRAVEL)
+                || this.isOf(Blocks.CLAY)
+                || this.isOf(Blocks.SOUL_SAND)
+                || this.isOf(Blocks.SOUL_SOIL)
+                || this.isOf(Blocks.NETHERRACK)
+                || this.isOf(Blocks.END_STONE)
+    }
+    naturalTerrainCache.put(id, result)
+    return result
+}
+
 private val dirtLikeCache = Int2BooleanOpenHashMap(1024)
 fun BlockState.isDirtLike(): Boolean {
     val id = Block.getId(this)
