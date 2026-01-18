@@ -134,17 +134,15 @@ object WorldData {
             ChunkAccess(ServerLifecycleHooks.getCurrentServer()!!.getLevel(Level.OVERWORLD)!!)
         )
     }
-    var map: IntegrityScan.Map? = null
-    var toRemoveMap: Set<BlockPos>? = null
+
+    var structure: IntegrityScan.Structure? = null
 
     fun onBlocksAdded(added: List<BlockPos>, level: Level) = TickScheduler.serverScope.launch {
         applyIntegrityScan(added.first(), level)
     }
 
     suspend fun applyIntegrityScan(at: BlockPos, level: Level) {
-        val (removed, map) = integrityScan.scan(at)
-        this.map = map
-        this.toRemoveMap = removed.toSet()
+        structure = integrityScan.scan(at)
 
 //        removed.forEach { pos ->
 //            level.destroyBlock(pos, false)

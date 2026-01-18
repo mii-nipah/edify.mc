@@ -10,4 +10,8 @@ object ModTags {
         Registries.BLOCK,
         ResourceLocation.fromNamespaceAndPath(modId, "floating")
     )
+    val building = TagKey.create(
+        Registries.BLOCK,
+        ResourceLocation.fromNamespaceAndPath(modId, "building")
+    )
 }

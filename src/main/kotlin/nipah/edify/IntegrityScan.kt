@@ -1,459 +1,168 @@
 package nipah.edify
 
-import it.unimi.dsi.fastutil.longs.Long2FloatOpenHashMap
 import it.unimi.dsi.fastutil.longs.Long2LongOpenHashMap
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import kotlinx.coroutines.yield
 import net.minecraft.core.BlockPos
-import net.minecraft.core.Direction
-import net.minecraft.world.level.block.Blocks
-import net.minecraft.world.level.block.LiquidBlock
-import nipah.edify.types.*
+import net.minecraft.world.level.block.Block
+import net.minecraft.world.level.block.state.BlockState
+import nipah.edify.types.BlockDistribution
+import nipah.edify.types.BlockSupport
+import nipah.edify.types.BlockWeight
+import nipah.edify.types.Float2
 import nipah.edify.utils.*
 
 class IntegrityScan(
     val chunks: ChunkAccess,
-    private val limit: Int = 3_000,
+    private val limit: Int = 30_000,
 ) {
-    @JvmInline
-    value class BlockWDS(val value: Half4) {
-        val weight get() = value.xy
-        val distribution get() = value.z
-        val support get() = value.w
+    class Structure(
+        // blockStateId, pressure
+        private val map: Long2LongOpenHashMap = Long2LongOpenHashMap(),
+    ) {
+        val isEmpty: Boolean
+            get() = map.isEmpty()
 
-        fun withWeight(newWeight: Float) =
-            BlockWDS(Half4.of(newWeight, distribution.half, support.half))
-
-        fun withDistribution(newDistribution: Float) =
-            BlockWDS(Half4.of(weight, newDistribution.half, support.half))
-
-        fun withSupport(newSupport: Float) =
-            BlockWDS(Half4.of(weight, distribution.half, newSupport.half))
-
-        companion object {
-            fun of(weight: Float, distribution: Float, support: Float) =
-                BlockWDS(Half4.of(weight, distribution.half, support.half))
-
-            fun of(bits: Long) = BlockWDS(Half4(bits))
+        fun exists(at: BlockPos): Boolean {
+            return exists(at.asLong())
         }
-    }
 
-    @JvmInline
-    value class BlockWeightResistance(val value: Float2) {
-        val weight get() = value.x
-        val resistance get() = value.y
-
-        fun withWeight(newWeight: Float) =
-            BlockWeightResistance(Float2.of(newWeight, resistance))
-
-        fun withResistance(newResistance: Float) =
-            BlockWeightResistance(Float2.of(weight, newResistance))
-
-        companion object {
-            fun of(weight: Float, resistance: Float) =
-                BlockWeightResistance(Float2.of(weight, resistance))
-
-            fun of(bits: Long) = BlockWeightResistance(Float2(bits))
+        fun exists(at: Long): Boolean {
+            return map.containsKey(at)
         }
-    }
 
-    class Map(limit: Int) {
-        val map = Long2LongOpenHashMap(limit).apply {
-            defaultReturnValue(-1L)
+        fun getLong(at: BlockPos): Float2 {
+            return getLong(at.asLong())
         }
-        val originals = Long2LongOpenHashMap(limit).apply {
-            defaultReturnValue(-1L)
+
+        fun getLong(at: Long): Float2 {
+            return Float2(map.get(at))
         }
-        var lowExtremity: BlockPos.MutableBlockPos? = null
-            private set
-        var highExtremity: BlockPos.MutableBlockPos? = null
-            private set
 
-        val isEmpty get() = map.isEmpty()
+        fun put(at: Long, data: Float2) {
+            map.put(at, data.bits)
+        }
 
-        fun getCenterOfMass(): BlockPos? {
-            if (map.isEmpty()) return null
-            var sumX = 0f
-            var sumY = 0f
-            var sumZ = 0f
+        inline fun use(at: BlockPos, block: (state: BlockState, pressure: Float) -> Unit) {
+            val data = getLong(at)
+            val state = Block.stateById(data.xi)
+            val pressure = data.y
+            block(state, pressure)
+        }
+
+        inline fun useMut(at: BlockPos, block: (state: BlockState, pressure: Float) -> Float) {
+            val data = getLong(at)
+            val state = Block.stateById(data.xi)
+            val pressure = data.y
+            val newPressure = block(state, pressure)
+            put(at.asLong(), Float2.of(data.xi, newPressure))
+        }
+
+        fun longIterator() = map.long2LongEntrySet().iterator()
+
+        inline fun forEach(block: (posLong: BlockPos, state: BlockState, pressure: Float) -> Unit) {
+            val iterator = longIterator()
             val pos = BlockPos.MutableBlockPos()
-            var totalW = 0f
-            map.forEach { longPos, _ ->
-                pos.set(longPos)
-                val w = get(longPos).weight
-                sumX += pos.x * w
-                sumY += pos.y * w
-                sumZ += pos.z * w
-                totalW += w
+            while (iterator.hasNext()) {
+                val entry = iterator.next()
+                val posLong = entry.longKey
+                pos.set(posLong)
+                val data = Float2(entry.longValue)
+                val state = Block.stateById(data.xi)
+                val pressure = data.y
+                block(pos, state, pressure)
             }
-            if (totalW == 0f) return null
-            return BlockPos(
-                (sumX / totalW).toInt(),
-                (sumY / totalW).toInt(),
-                (sumZ / totalW).toInt(),
-            )
-        }
-
-        fun getClosest(to: BlockPos): BlockPos? {
-            var closest = -1L
-            var closestDist = Double.MAX_VALUE
-            val mpos = BlockPos.MutableBlockPos()
-            map.forEach { longPos, _ ->
-                mpos.set(longPos)
-                val dist = mpos.distSqr(to)
-                if (dist < closestDist) {
-                    closestDist = dist
-                    closest = longPos
-                }
-            }
-            return run {
-                if (closest == -1L)
-                    null
-                else
-                    BlockPos.of(closest)
-            }
-        }
-
-        fun getClosestToLowExtremity(): BlockPos? {
-            val lowExtremity = lowExtremity ?: return null
-            return getClosest(lowExtremity)
-        }
-
-        fun getClosestToHighExtremity(): BlockPos? {
-            val highExtremity = highExtremity ?: return null
-            return getClosest(highExtremity)
-        }
-
-        val size get() = map.size
-
-        fun clear() {
-            map.clear()
-            lowExtremity = null
-            highExtremity = null
-        }
-
-        fun forEach(action: (pos: BlockPos, originalWeight: Float, weight: Float, resistance: Float, distribution: Float, support: Float) -> Unit) {
-            val mpos = BlockPos.MutableBlockPos()
-            for (entry in map.long2LongEntrySet()) {
-                val longPos = entry.longKey
-                val wdsBits = entry.longValue
-                val ogVal = originals.getOrDefault(longPos, -1L)
-                if (ogVal == -1L) continue
-                val wds = BlockWDS.of(wdsBits)
-                val ogWr = BlockWeightResistance.of(ogVal)
-                mpos.set(longPos)
-                action(
-                    mpos,
-                    ogWr.weight,
-                    wds.weight,
-                    ogWr.resistance,
-                    wds.distribution,
-                    wds.support
-                )
-            }
-        }
-
-        fun updateWeight(pos: BlockPos, weight: Float) {
-            map[pos.asLong()].let {
-                val wds = BlockWDS.of(it)
-                map[pos.asLong()] = wds.withWeight(weight).value.bits
-            }
-        }
-
-        inline fun updateWeight(pos: BlockPos, weight: (Float) -> Float) {
-            map[pos.asLong()].let {
-                val wds = BlockWDS.of(it)
-                val newW = weight(wds.weight)
-                map[pos.asLong()] = wds.withWeight(newW).value.bits
-            }
-        }
-
-        fun updateResistance(pos: BlockPos, resistance: Float) {
-            originals[pos.asLong()].let {
-                val wr = BlockWeightResistance.of(it)
-                originals[pos.asLong()] = wr.withResistance(resistance).value.bits
-            }
-        }
-
-        fun updateDistribution(pos: BlockPos, distribution: Float) {
-            map[pos.asLong()].let {
-                val wds = BlockWDS.of(it)
-                map[pos.asLong()] = wds.withDistribution(distribution).value.bits
-            }
-        }
-
-        fun updateSupport(pos: BlockPos, support: Float) {
-            map[pos.asLong()].let {
-                val wds = BlockWDS.of(it)
-                map[pos.asLong()] = wds.withSupport(support).value.bits
-            }
-        }
-
-        fun put(pos: BlockPos, weight: Float, resistance: Float, distribution: Float, support: Float) {
-            put(pos.asLong(), weight, resistance, distribution, support)
-        }
-
-        private val mpos = BlockPos.MutableBlockPos()
-        fun put(longPos: Long, weight: Float, resistance: Float, distribution: Float, support: Float) {
-            map[longPos] = BlockWDS.of(weight, distribution, support).value.bits
-            if (longPos !in originals) {
-                originals[longPos] = BlockWeightResistance.of(weight, resistance).value.bits
-            }
-            mpos.set(longPos)
-            if (lowExtremity == null) {
-                lowExtremity = mpos.immutable().mutable()
-                if (highExtremity == null) {
-                    highExtremity = mpos.immutable().mutable()
-                }
-                return
-            }
-            if (highExtremity == null) {
-                highExtremity = mpos.immutable().mutable()
-                return
-            }
-
-            lowExtremity!!.minAssign(mpos)
-            highExtremity!!.maxAssign(mpos)
-        }
-
-        fun maybeGet(pos: BlockPos): BlockWDS? {
-            return map.getOrDefault(pos.asLong(), -1L)
-                .takeIf { it != -1L }?.let { BlockWDS(Half4(it)) }
-        }
-
-        fun maybeGet(longPos: Long): BlockWDS? {
-            return map.getOrDefault(longPos, -1L)
-                .takeIf { it != -1L }?.let { BlockWDS(Half4(it)) }
-        }
-
-        fun get(pos: BlockPos): BlockWDS {
-            return map[pos.asLong()].let { BlockWDS.of(it) }
-        }
-
-        fun get(longPos: Long): BlockWDS {
-            return map[longPos].let { BlockWDS.of(it) }
-        }
-
-        operator fun contains(pos: BlockPos): Boolean {
-            return pos.asLong() in map
-        }
-
-        operator fun contains(longPos: Long): Boolean {
-            return longPos in map
         }
     }
 
-    suspend fun scan(seed: BlockPos): Pair<List<BlockPos>, Map> {
+    private val structures = mutableListOf<Structure>()
+
+    suspend fun scan(seed: BlockPos): Structure? {
         return withContext(TickScheduler.roundRobinDispatcher()) {
-            val map = step1(seed)
-            for (i in 0 until 1) {
-                step2(map)
+            val structure = run {
+                structures.find {
+                    if (it.exists(seed))
+                        true
+                    else
+                        seed.forEachNeighborWithCornersNoAlloc { npos ->
+                            if (it.exists(npos)) {
+                                return@find true
+                            }
+                        }
+                    false
+                } ?: initStructure(seed).also {
+                    if (it == null) {
+                        return@withContext null
+                    }
+                    structures.add(it)
+                }
             }
-            step3(map) to map
+            if (structure != null) {
+                TickScheduler.serverScope.launch {
+                    repeat(10) {
+                        updateStructure(structure)
+                        TickScheduler.sleep(20)
+                    }
+                }
+            }
+            structure
         }
     }
 
-    suspend fun step1(seed: BlockPos): Map {
-        val map = Map(limit)
-        val bfs = BfsBox(limit, scanPerTick = limit)
+    suspend fun updateStructure(structure: Structure) {
+        val mutablePos = BlockPos.MutableBlockPos()
+        structure.forEach { pos, state, pressure ->
+            val w = BlockWeight.of(state)
+            if (pressure < w.value * 0.25f) {
+                return@forEach
+            }
+            val d = BlockDistribution.of(state).value.f
+            val down = pressure * 0.25f * d
+            val side = (pressure / pos.neighborHorizontalWithCornersSize) * d
+            var nextPressure = pressure
 
-        val result = bfs.scan(seed) { pos ->
+            pos.forEachHorizontalNeighborWithCornersNoAlloc(mutablePos) { npos ->
+                if (structure.exists(npos).not) {
+                    return@forEachHorizontalNeighborWithCornersNoAlloc
+                }
+                structure.useMut(npos) { nstate, npressure ->
+                    nextPressure -= side
+                    npressure + side
+                }
+            }
+            val belowPos = pos.below()
+            if (structure.exists(belowPos)) {
+                structure.useMut(belowPos) { nstate, npressure ->
+                    nextPressure -= down
+                    npressure + down
+                }
+            }
+            structure.put(pos.asLong(), Float2.of(Block.getId(state), nextPressure))
+        }
+    }
+
+    suspend fun initStructure(seed: BlockPos): Structure? {
+        val structure = Structure()
+        val dfs = BfsBox(limit, 10_000)
+
+        dfs.scan(seed) { pos ->
             val chunk = chunks.at(pos) ?: return@scan BfsBox.ScanCommand.Continue
-            val state = chunk.getBlockState(pos)
-            if (state.isAir
-                || state.isEmpty
-                || state.block is LiquidBlock
-                || state.block == Blocks.BEDROCK
-            ) return@scan BfsBox.ScanCommand.Continue
-
-            val blockW = BlockWeight.of(state)
-            val blockR = BlockResistance.of(state)
-            val blockD = BlockDistribution.of(state)
-            val blockS = BlockSupport.of(state)
-            map.put(
-                pos.asLong(),
-                blockW.value, blockR.value.f,
-                blockD.value.f, blockS.value.f
-            )
-            if (map.size >= limit) return@scan BfsBox.ScanCommand.Stop(BfsBox.ScanResult.Ok)
-
-            BfsBox.ScanCommand.VisitNeighbors
-        }
-        when (result) {
-            is BfsBox.ScanResult.Cancelled -> {
-                map.clear()
+            val block = chunk.getBlockState(pos)
+            if (block.isAir || block.isEmpty || block.isBuilding().not) {
+                return@scan BfsBox.ScanCommand.Continue
             }
-
-            is BfsBox.ScanResult.Ok, is BfsBox.ScanResult.Limit -> {}
-        }
-
-        return map
-    }
-
-    @JvmInline
-    value class MapApplyChangesScope(private val buffer: Long2FloatOpenHashMap) {
-        fun setWeight(pos: BlockPos, w: Float) {
-            buffer[pos.asLong()] = w
-        }
-
-        fun addWeight(pos: BlockPos, w: Float) {
-            buffer[pos.asLong()] += w
-        }
-
-        fun removeWeight(pos: BlockPos, w: Float) {
-            buffer[pos.asLong()] -= w
-        }
-    }
-
-    private inline fun Map.applyChanges(action: MapApplyChangesScope.() -> Boolean) {
-        val buffer = Long2FloatOpenHashMap(size).apply {
-            defaultReturnValue(0f)
-        }
-        val scope = MapApplyChangesScope(buffer)
-        val result = scope.action()
-        if (result) {
-            for (entry in buffer.long2FloatEntrySet()) {
-                val longPos = entry.longKey
-                val w = entry.floatValue
-//                updateWeight(BlockPos.of(longPos), w)
-                updateWeight(BlockPos.of(longPos)) { (it + w).coerceAtLeast(0.1f).coerceNaN(0.1f) }
+            var w = BlockWeight.of(block).value
+            val s = BlockSupport.of(block)
+            if (chunk.getBlockState(pos.below()).let { it.isAir || it.isEmpty }) {
+                w *= s.value.f
             }
+            structure.put(pos.asLong(), Float2.of(Block.getId(block), w))
+            BfsBox.ScanCommand.VisitNeighborWithCorners
         }
-    }
-
-    suspend fun step2(map: Map) {
-        if (map.isEmpty) return
-
-        val npos = BlockPos.MutableBlockPos()
-
-        fun timestep() {
-            fun edgeCoeff(sHere: Float, sThere: Float) = kotlin.math.min(sHere, sThere) // symmetric, in [0,1]
-
-            map.applyChanges {
-                map.forEach { pos, originalWeight, _, _, distribution, support ->
-
-                    var removeTotal = 0f
-
-                    // ---------- DOWN ----------
-                    run {
-                        var outD = 0f
-                        val budget = (originalWeight * distribution).coerceIn(0f, originalWeight)
-
-                        npos.set(pos); npos.move(Direction.DOWN)
-                        if (npos in map) {
-                            val n = map.get(npos)
-                            val x = budget * edgeCoeff(support, n.support)
-                            if (x > 0f) {
-                                addWeight(npos, x)
-                                outD += x
-                            }
-                        }
-                        else {
-                            // solid ground below? => sink
-                            if (!chunks.getBlockStateAt(npos).isNothingOrLiquid) {
-                                outD += budget
-                            }
-                            // else (air below outside map): choose whether “falling” is a sink; if yes:
-                            // else outD += budget
-                        }
-                        removeTotal += outD
-                    }
-
-                    // ---------- HORIZONTAL (with corners) ----------
-                    run {
-                        var outH = 0f
-                        val hFrac = 0.25f                                  // tune [0..1]
-                        val budget = (originalWeight * hFrac).coerceIn(0f, originalWeight)
-
-                        // Gather valid neighbors + weights (one pass)
-                        val neighbors = mutableListOf<Pair<BlockPos, Float>>()
-                        var wsum = 0f
-                        pos.forEachHorizontalNeighborWithCornersNoAlloc(npos) { nn ->
-                            if (nn in map) {
-                                val n = map.get(nn)
-                                val e = edgeCoeff(support, n.support)
-                                if (e > 0f) {
-                                    neighbors += (BlockPos(nn) to e)       // copy coord; don't reuse npos
-                                    wsum += e
-                                }
-                            }
-                        }
-
-                        if (wsum > 0f) {
-                            // Distribute entire budget across valid neighbors
-                            for ((nn, e) in neighbors) {
-                                val x = budget * (e / wsum)
-                                if (x > 0f) {
-                                    addWeight(nn, x)
-                                    outH += x
-                                }
-                            }
-                        }
-                        else {
-                            // No valid in-map neighbors. If any horizontal neighbor is solid (wall),
-                            // sink the whole horizontal budget; if only air, do nothing.
-                            var touchesSolid = false
-                            pos.forEachHorizontalNeighborWithCornersNoAlloc(npos) { nn ->
-                                if (nn !in map && !chunks.getBlockStateAt(nn).isNothingOrLiquid) {
-                                    touchesSolid = true
-                                }
-                            }
-                            if (touchesSolid) outH += budget
-                        }
-
-                        removeTotal += outH
-                    }
-
-                    // ---------- UP (paired pull from above) ----------
-                    run {
-                        npos.set(pos); npos.move(Direction.DOWN)
-                        val belowIsAir = chunks.getBlockStateAt(npos).isNothingOrLiquid
-                        if (belowIsAir) {
-                            npos.set(pos); npos.move(Direction.UP)
-                            if (npos in map) {
-                                val upFrac = 0.05f                          // small
-                                val up = (originalWeight * upFrac).coerceAtLeast(0f)
-                                if (up > 0f) {
-                                    removeWeight(npos, up)                  // remove from above
-                                    addWeight(pos, up)                      // add here (no remove from pos)
-                                }
-                            }
-                        }
-                    }
-
-                    // Remove exactly what this cell sent out (down + horizontal sinks/transfers)
-                    removeWeight(pos, removeTotal.coerceAtMost(originalWeight))
-                }
-                true
-            }
+        if (structure.isEmpty) {
+            return null
         }
-        repeat(0) {
-            timestep()
-        }
-        TickScheduler.serverScope.launch {
-            suspend fun sleep(time: Int) {
-                val ticks = time / 50
-                if (ticks <= 0) return
-                repeat(ticks) {
-                    yield()
-                }
-            }
-            repeat(500) {
-                timestep()
-                sleep(1000000)
-            }
-        }
-    }
 
-    suspend fun step3(map: Map): List<BlockPos> {
-        val toRemove = mutableListOf<BlockPos>()
-        map.forEach { pos, ogW, weight, resistance, _, _ ->
-            val wRes = (ogW) + (ogW * resistance)
-            if (weight > wRes) {
-                toRemove.add(pos.immutable())
-            }
-        }
-        return toRemove
+        return structure
     }
 }

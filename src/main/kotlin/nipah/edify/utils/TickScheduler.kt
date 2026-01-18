@@ -15,6 +15,7 @@ import java.util.concurrent.ConcurrentLinkedDeque
 import java.util.concurrent.CopyOnWriteArrayList
 import kotlin.concurrent.thread
 import kotlin.coroutines.CoroutineContext
+import kotlin.time.Duration
 
 object TickScheduler {
     private val clientTasks = CopyOnWriteArrayList<Task<Minecraft>>()
@@ -32,6 +33,15 @@ object TickScheduler {
         val thread = threads[nextThreadIndex]
         nextThreadIndex = (nextThreadIndex + 1) % threads.size
         return thread
+    }
+
+    suspend fun sleep(ticks: Int) {
+        return kotlinx.coroutines.delay(ticks * 50L)
+    }
+
+    suspend fun sleep(time: Duration) {
+        val ticks = (time.inWholeMilliseconds / 50L).toInt()
+        sleep(ticks)
     }
 
     internal class SchedulerThread {

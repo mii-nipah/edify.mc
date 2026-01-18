@@ -457,6 +457,10 @@ fun BlockState.isFloating(): Boolean {
     return result
 }
 
+fun BlockState.isBuilding(): Boolean {
+    return this.has(ModTags.building)
+}
+
 inline val BlockState?.isNothing
     get() =
         this == null || isAir || isEmpty

@@ -14,6 +14,8 @@ import nipah.edify.client.render.BatchRenderer
 import nipah.edify.events.UniversalBlockEvent
 import nipah.edify.gizmos.Depth
 import nipah.edify.gizmos.Gizmos
+import nipah.edify.types.BlockResistance
+import nipah.edify.types.BlockWeight
 import nipah.edify.utils.TickScheduler
 import java.util.*
 
@@ -44,17 +46,16 @@ object ChunkEvents {
 
     @SubscribeEvent
     fun onClientTick(e: ClientTickEvent.Post) {
-        val map = WorldData.map ?: return
-        map.forEach { pos, ogW, weight, resistance, _, _ ->
-            val wRes = (ogW) + (ogW * resistance)
-            val ratio = weight / wRes.coerceAtLeast(1f)
-            val color = Gizmos.Color.lerp(Gizmos.Color.green, Gizmos.Color.red, ratio.coerceIn(0f, 1f))
-            if (ratio > 0.95f) {
-                Gizmos.blockFill(pos, Gizmos.Color.red, Depth.XRAY)
-            }
-            else {
-                Gizmos.block(pos, color, Depth.DEPTH_TEST)
-            }
+        val map = WorldData.structure ?: return
+        map.forEach { pos, state, pressure ->
+            val w = BlockWeight.of(state)
+            val r = BlockResistance.of(state)
+
+            val maxPressure = w.value * r.value.f
+            val ratio = (pressure / maxPressure).coerceIn(0f, 1f)
+
+            val color = Gizmos.Color.lerp(Gizmos.Color.green, Gizmos.Color.red, ratio)
+            Gizmos.block(pos, color, Depth.DEPTH_TEST)
         }
     }
 
