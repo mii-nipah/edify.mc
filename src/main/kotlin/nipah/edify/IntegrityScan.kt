@@ -21,6 +21,11 @@ class IntegrityScan(
     val chunks: ChunkAccess,
     private val limit: Int = 30_000,
 ) {
+    companion object {
+        private const val GLOBAL_STRENGTH = 4.0f
+        private const val LEVERAGE_MULTIPLIER = 1.6f
+    }
+
     class Structure(
         private val map: Long2LongOpenHashMap = Long2LongOpenHashMap(),
     ) {
@@ -63,7 +68,6 @@ class IntegrityScan(
             val iterator = longIterator()
             var maxRatioSeen = 0f
             var maxRatioPos: BlockPos? = null
-            val globalStrength = 64.0f
             while (iterator.hasNext()) {
                 val entry = iterator.next()
                 val data = Float2(entry.longValue)
@@ -71,7 +75,7 @@ class IntegrityScan(
                 val pressure = data.y
                 val weight = BlockWeight.of(state).value
                 val resistance = BlockResistance.of(state).value.f
-                val maxPressure = weight * resistance * globalStrength
+                val maxPressure = weight * resistance * GLOBAL_STRENGTH
                 val ratio = pressure / maxPressure
                 if (ratio > maxRatioSeen) {
                     maxRatioSeen = ratio
@@ -90,7 +94,6 @@ class IntegrityScan(
         fun collectOverpressuredSorted(): List<Long> {
             val overpressured = mutableListOf<Pair<Long, Float>>()
             val iterator = longIterator()
-            val globalStrength = 64.0f
             while (iterator.hasNext()) {
                 val entry = iterator.next()
                 val data = Float2(entry.longValue)
@@ -98,7 +101,7 @@ class IntegrityScan(
                 val pressure = data.y
                 val weight = BlockWeight.of(state).value
                 val resistance = BlockResistance.of(state).value.f
-                val maxPressure = weight * resistance * globalStrength
+                val maxPressure = weight * resistance * GLOBAL_STRENGTH
                 val ratio = pressure / maxPressure
                 if (ratio > 1f) {
                     overpressured.add(entry.longKey to ratio)
@@ -264,7 +267,6 @@ class IntegrityScan(
         }
 
         val loadOnBlock = Long2LongOpenHashMap()
-        val leverageMultiplier = 1.3f // Cost of horizontal transfer
 
         val blockIter = allBlocks.iterator()
         while (blockIter.hasNext()) {
@@ -354,16 +356,25 @@ class IntegrityScan(
                     pressure = totalLoad
                 }
                 else if (!otherSupporters.isEmpty) {
-                    // Horizontal support is inefficient (Leverage penalty)
-                    val leveragedLoad = totalLoad * leverageMultiplier
-                    val loadPerSupport = leveragedLoad / otherSupporters.size
+                    // Horizontal support -> We are a cantilever/beam
+
+                    val loadPerSupport = totalLoad / otherSupporters.size
                     val iterator = otherSupporters.iterator()
                     while (iterator.hasNext()) {
                         val supp = iterator.nextLong()
+
+                        // Check if supporter is firmly grounded (has block below, or is ground)
+                        // This prevents leverage from propagating DOWN into the foundation
+                        val suppBelow = BlockPos.of(supp).below().asLong()
+                        val isPillar = structure.exists(suppBelow) || groundedBlocks.contains(supp)
+
+                        val loadToPass = if (isPillar) loadPerSupport else (loadPerSupport * LEVERAGE_MULTIPLIER)
+
                         val current = Float.fromBits(loadOnBlock.get(supp).toInt())
-                        loadOnBlock.put(supp, (current + loadPerSupport).toRawBits().toLong())
+                        loadOnBlock.put(supp, (current + loadToPass).toRawBits().toLong())
                     }
-                    pressure = totalLoad // Pressure ON THIS block is just load, but neighbors get hit harder
+                    // Our pressure is high because we are being leveraged
+                    pressure = totalLoad * LEVERAGE_MULTIPLIER
                 }
                 else {
                     // Should technically be unreachable if 'canReachGround' is true

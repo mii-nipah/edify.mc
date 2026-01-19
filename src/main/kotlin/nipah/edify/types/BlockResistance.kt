@@ -13,7 +13,7 @@ value class BlockResistance(val value: Half) {
                 return BlockResistance(Half.MAX_VALUE)
             }
             if (state.isHeavy()) {
-                return BlockResistance(20f.half)
+                return BlockResistance(80f.half)
             }
             if (state.isDirtLike()) {
                 return BlockResistance(4f.half)
@@ -28,7 +28,7 @@ value class BlockResistance(val value: Half) {
                 return BlockResistance(6f.half)
             }
             if (state.isStoneLike()) {
-                return BlockResistance(10f.half)
+                return BlockResistance(45f.half)
             }
             if (state.isExplosive()) {
                 return BlockResistance(1f.half)
@@ -37,7 +37,7 @@ value class BlockResistance(val value: Half) {
                 return BlockResistance(0f.half)
             }
             if (state.has(BlockTags.IMPERMEABLE)) {
-                return BlockResistance(5f.half)
+                return BlockResistance(15f.half)
             }
             return BlockResistance(3f.half)
         }
