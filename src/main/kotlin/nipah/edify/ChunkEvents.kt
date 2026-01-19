@@ -47,15 +47,21 @@ object ChunkEvents {
     @SubscribeEvent
     fun onClientTick(e: ClientTickEvent.Post) {
         val map = WorldData.structure ?: return
-        map.forEach { pos, state, pressure ->
-            val w = BlockWeight.of(state)
-            val r = BlockResistance.of(state)
+        try {
+            map.forEach { pos, state, pressure ->
+                val w = BlockWeight.of(state)
+                val r = BlockResistance.of(state)
 
-            val maxPressure = w.value * r.value.f
-            val ratio = (pressure / maxPressure).coerceIn(0f, 1f)
+                val maxPressure = w.value * r.value.f
+                val ratio = (pressure / maxPressure).coerceIn(0f, 1f)
 
-            val color = Gizmos.Color.lerp(Gizmos.Color.green, Gizmos.Color.red, ratio)
-            Gizmos.block(pos, color, Depth.DEPTH_TEST)
+                val color = Gizmos.Color.lerp(Gizmos.Color.green, Gizmos.Color.red, ratio)
+                Gizmos.block(pos, color, Depth.DEPTH_TEST)
+            }
+        }
+        catch (_: ConcurrentModificationException) {
+        }
+        catch (_: NullPointerException) {
         }
     }
 

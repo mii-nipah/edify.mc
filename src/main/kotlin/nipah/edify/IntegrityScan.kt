@@ -1,13 +1,17 @@
 package nipah.edify
 
 import it.unimi.dsi.fastutil.longs.Long2LongOpenHashMap
+import it.unimi.dsi.fastutil.longs.LongArrayList
+import it.unimi.dsi.fastutil.longs.LongOpenHashSet
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import net.minecraft.core.BlockPos
+import net.minecraft.server.level.ServerLevel
+import net.minecraft.sounds.SoundSource
 import net.minecraft.world.level.block.Block
 import net.minecraft.world.level.block.state.BlockState
-import nipah.edify.types.BlockDistribution
-import nipah.edify.types.BlockSupport
+import nipah.edify.chunks.setDebrisAt
+import nipah.edify.types.BlockResistance
 import nipah.edify.types.BlockWeight
 import nipah.edify.types.Float2
 import nipah.edify.utils.*
@@ -17,91 +21,120 @@ class IntegrityScan(
     private val limit: Int = 30_000,
 ) {
     class Structure(
-        // blockStateId, pressure
         private val map: Long2LongOpenHashMap = Long2LongOpenHashMap(),
     ) {
         val isEmpty: Boolean
             get() = map.isEmpty()
 
-        fun exists(at: BlockPos): Boolean {
-            return exists(at.asLong())
-        }
+        val size: Int
+            get() = map.size
 
-        fun exists(at: Long): Boolean {
-            return map.containsKey(at)
-        }
+        fun exists(at: BlockPos): Boolean = map.containsKey(at.asLong())
+        fun exists(at: Long): Boolean = map.containsKey(at)
 
-        fun getLong(at: BlockPos): Float2 {
-            return getLong(at.asLong())
-        }
-
-        fun getLong(at: Long): Float2 {
-            return Float2(map.get(at))
-        }
+        fun getLong(at: Long): Float2 = Float2(map.get(at))
+        fun getLong(at: BlockPos): Float2 = getLong(at.asLong())
 
         fun put(at: Long, data: Float2) {
             map.put(at, data.bits)
         }
 
-        inline fun use(at: BlockPos, block: (state: BlockState, pressure: Float) -> Unit) {
-            val data = getLong(at)
-            val state = Block.stateById(data.xi)
-            val pressure = data.y
-            block(state, pressure)
-        }
-
-        inline fun useMut(at: BlockPos, block: (state: BlockState, pressure: Float) -> Float) {
-            val data = getLong(at)
-            val state = Block.stateById(data.xi)
-            val pressure = data.y
-            val newPressure = block(state, pressure)
-            put(at.asLong(), Float2.of(data.xi, newPressure))
+        fun remove(at: Long) {
+            map.remove(at)
         }
 
         fun longIterator() = map.long2LongEntrySet().iterator()
 
-        inline fun forEach(block: (posLong: BlockPos, state: BlockState, pressure: Float) -> Unit) {
+        inline fun forEach(block: (pos: BlockPos, state: BlockState, pressure: Float) -> Unit) {
             val iterator = longIterator()
             val pos = BlockPos.MutableBlockPos()
             while (iterator.hasNext()) {
                 val entry = iterator.next()
-                val posLong = entry.longKey
-                pos.set(posLong)
+                pos.set(entry.longKey)
+                val data = Float2(entry.longValue)
+                val state = Block.stateById(data.xi)
+                block(pos, state, data.y)
+            }
+        }
+
+        fun collectOverpressured(): LongArrayList {
+            val result = LongArrayList()
+            val iterator = longIterator()
+            var maxRatioSeen = 0f
+            var maxRatioPos: BlockPos? = null
+            while (iterator.hasNext()) {
+                val entry = iterator.next()
                 val data = Float2(entry.longValue)
                 val state = Block.stateById(data.xi)
                 val pressure = data.y
-                block(pos, state, pressure)
+                val weight = BlockWeight.of(state).value
+                val resistance = BlockResistance.of(state).value.f
+                val maxPressure = weight * resistance
+                val ratio = pressure / maxPressure
+                if (ratio > maxRatioSeen) {
+                    maxRatioSeen = ratio
+                    maxRatioPos = BlockPos.of(entry.longKey)
+                }
+                if (pressure > maxPressure) {
+                    result.add(entry.longKey)
+                }
             }
+            if (maxRatioPos != null) {
+                Edify.LOGGER.info("[IntegrityScan] Max ratio: ${"%.2f".format(maxRatioSeen)} at $maxRatioPos (${result.size} overpressured)")
+            }
+            return result
+        }
+
+        fun collectOverpressuredSorted(): List<Long> {
+            val overpressured = mutableListOf<Pair<Long, Float>>()
+            val iterator = longIterator()
+            while (iterator.hasNext()) {
+                val entry = iterator.next()
+                val data = Float2(entry.longValue)
+                val state = Block.stateById(data.xi)
+                val pressure = data.y
+                val weight = BlockWeight.of(state).value
+                val resistance = BlockResistance.of(state).value.f
+                val maxPressure = weight * resistance
+                val ratio = pressure / maxPressure
+                if (ratio > 1f) {
+                    overpressured.add(entry.longKey to ratio)
+                }
+            }
+            return overpressured.sortedByDescending { it.second }.map { it.first }
         }
     }
 
     private val structures = mutableListOf<Structure>()
+    private val simulatingStructures = mutableSetOf<Structure>()
 
-    suspend fun scan(seed: BlockPos): Structure? {
+    suspend fun scan(seed: BlockPos, level: ServerLevel): Structure? {
         return withContext(TickScheduler.roundRobinDispatcher()) {
+            var isNew = false
             val structure = run {
                 structures.find {
-                    if (it.exists(seed))
-                        true
-                    else
+                    if (it.exists(seed)) true
+                    else {
+                        var found = false
                         seed.forEachNeighborWithCornersNoAlloc { npos ->
-                            if (it.exists(npos)) {
-                                return@find true
-                            }
+                            if (it.exists(npos)) found = true
                         }
-                    false
-                } ?: initStructure(seed).also {
-                    if (it == null) {
-                        return@withContext null
+                        found
                     }
+                } ?: initStructure(seed).also {
+                    if (it == null) return@withContext null
                     structures.add(it)
+                    isNew = true
                 }
             }
-            if (structure != null) {
+            if (structure != null && isNew && structure !in simulatingStructures) {
+                simulatingStructures.add(structure)
                 TickScheduler.serverScope.launch {
-                    repeat(10) {
-                        updateStructure(structure)
-                        TickScheduler.sleep(20)
+                    try {
+                        simulateStructure(structure, level)
+                    }
+                    finally {
+                        simulatingStructures.remove(structure)
                     }
                 }
             }
@@ -109,35 +142,161 @@ class IntegrityScan(
         }
     }
 
-    suspend fun updateStructure(structure: Structure) {
-        val mutablePos = BlockPos.MutableBlockPos()
-        structure.forEach { pos, state, pressure ->
-            val w = BlockWeight.of(state)
-            if (pressure < w.value * 0.25f) {
-                return@forEach
-            }
-            val d = BlockDistribution.of(state).value.f
-            val down = pressure * 0.25f * d
-            val side = (pressure / pos.neighborHorizontalWithCornersSize) * d
-            var nextPressure = pressure
+    private suspend fun simulateStructure(structure: Structure, level: ServerLevel) {
+        repeat(5) { updateStructure(structure) }
 
-            pos.forEachHorizontalNeighborWithCornersNoAlloc(mutablePos) { npos ->
-                if (structure.exists(npos).not) {
-                    return@forEachHorizontalNeighborWithCornersNoAlloc
+        val maxIterations = 40
+        var iteration = 0
+        val maxBreaksPerTick = 3
+
+        while (iteration < maxIterations && structure.size > 0) {
+            updateStructure(structure)
+            iteration++
+
+            val broken = structure.collectOverpressuredSorted()
+            if (broken.isNotEmpty()) {
+                val toBreak = broken.take(maxBreaksPerTick)
+                Edify.LOGGER.info("[IntegrityScan] Breaking ${toBreak.size}/${broken.size} overpressured blocks")
+
+                withContext(TickScheduler.ServerDispatcher) {
+                    for (longPos in toBreak) {
+                        structure.remove(longPos)
+                        val pos = BlockPos.of(longPos)
+                        val state = level.getBlockState(pos)
+                        if (!state.isAir) {
+                            level.removeBlock(pos, false)
+                            level.setDebrisAt(pos, state)
+                            level.playSound(
+                                null,
+                                pos,
+                                state.soundType.breakSound,
+                                SoundSource.BLOCKS,
+                                4.0f,
+                                0.8f + level.random.nextFloat() * 0.4f
+                            )
+                        }
+                    }
                 }
-                structure.useMut(npos) { nstate, npressure ->
-                    nextPressure -= side
-                    npressure + side
+
+                repeat(2) { updateStructure(structure) }
+            }
+
+            TickScheduler.sleep(3)
+        }
+
+        structures.remove(structure)
+    }
+
+    fun updateStructure(structure: Structure) {
+        val pos = BlockPos.MutableBlockPos()
+        val npos = BlockPos.MutableBlockPos()
+
+        val groundedBlocks = LongOpenHashSet()
+        structure.forEach { p, _, _ ->
+            val belowPos = p.below()
+            if (!structure.exists(belowPos)) {
+                val chunk = chunks.at(belowPos)
+                val isGround = chunk?.getBlockState(belowPos)?.let { !it.isAir && !it.isEmpty } ?: false
+                if (isGround) groundedBlocks.add(p.asLong())
+            }
+        }
+
+        val canReachGround = LongOpenHashSet()
+        canReachGround.addAll(groundedBlocks)
+        var changed = true
+        while (changed) {
+            changed = false
+            structure.forEach { p, _, _ ->
+                val longPos = p.asLong()
+                if (canReachGround.contains(longPos)) return@forEach
+                p.forEachNeighborNoAlloc(npos) { n ->
+                    if (canReachGround.contains(n.asLong())) {
+                        canReachGround.add(longPos)
+                        changed = true
+                    }
                 }
             }
-            val belowPos = pos.below()
-            if (structure.exists(belowPos)) {
-                structure.useMut(belowPos) { nstate, npressure ->
-                    nextPressure -= down
-                    npressure + down
+        }
+
+        val blocksByHeight = mutableMapOf<Int, MutableList<Long>>()
+        val iter = structure.longIterator()
+        while (iter.hasNext()) {
+            val entry = iter.next()
+            val y = BlockPos.getY(entry.longKey)
+            blocksByHeight.getOrPut(y) { mutableListOf() }.add(entry.longKey)
+        }
+
+        val sortedHeights = blocksByHeight.keys.sortedDescending()
+        val loadOnBlock = Long2LongOpenHashMap()
+
+        for (height in sortedHeights) {
+            val blocksAtHeight = blocksByHeight[height] ?: continue
+
+            for (longPos in blocksAtHeight) {
+                pos.set(longPos)
+                val data = structure.getLong(longPos)
+                val state = Block.stateById(data.xi)
+                val ownWeight = BlockWeight.of(state).value
+                val isGrounded = groundedBlocks.contains(longPos)
+
+                val loadFromAbove = if (loadOnBlock.containsKey(longPos))
+                    Float.fromBits(loadOnBlock.get(longPos).toInt())
+                else 0f
+                val totalLoad = ownWeight + loadFromAbove
+
+                val belowPos = pos.below()
+                val hasDirectBelow = structure.exists(belowPos)
+
+                val verticalSupporters = mutableListOf<Long>()
+                val horizontalSupporters = mutableListOf<Long>()
+
+                if (hasDirectBelow) {
+                    verticalSupporters.add(belowPos.asLong())
+                }
+
+                pos.forEachNeighborNoAlloc(npos) { n ->
+                    if (n.y < height && structure.exists(n) && n.asLong() != belowPos.asLong()) {
+                        verticalSupporters.add(n.asLong())
+                    }
+                    else if (n.y == height && structure.exists(n) && canReachGround.contains(n.asLong())) {
+                        horizontalSupporters.add(n.asLong())
+                    }
+                }
+
+                val allSupporters = verticalSupporters + horizontalSupporters
+
+                if (allSupporters.isEmpty()) {
+                    val pressure = if (isGrounded) ownWeight else totalLoad * 3f
+                    structure.put(longPos, Float2.of(Block.getId(state), pressure))
+                }
+                else {
+                    val verticalRatio = if (verticalSupporters.isNotEmpty()) 0.8f else 0f
+                    val horizontalRatio = 1f - verticalRatio
+
+                    if (verticalSupporters.isNotEmpty()) {
+                        val perVertical = (totalLoad * verticalRatio) / verticalSupporters.size
+                        for (supporter in verticalSupporters) {
+                            val existing = if (loadOnBlock.containsKey(supporter))
+                                Float.fromBits(loadOnBlock.get(supporter).toInt())
+                            else 0f
+                            loadOnBlock.put(supporter, (existing + perVertical).toRawBits().toLong())
+                        }
+                    }
+
+                    if (horizontalSupporters.isNotEmpty() && horizontalRatio > 0f) {
+                        val perHorizontal = (totalLoad * horizontalRatio) / horizontalSupporters.size
+                        for (supporter in horizontalSupporters) {
+                            val existing = if (loadOnBlock.containsKey(supporter))
+                                Float.fromBits(loadOnBlock.get(supporter).toInt())
+                            else 0f
+                            loadOnBlock.put(supporter, (existing + perHorizontal).toRawBits().toLong())
+                        }
+                    }
+
+                    val pressure = if (isGrounded) ownWeight else totalLoad
+                    structure.put(longPos, Float2.of(Block.getId(state), pressure))
                 }
             }
-            structure.put(pos.asLong(), Float2.of(Block.getId(state), nextPressure))
         }
     }
 
@@ -145,24 +304,17 @@ class IntegrityScan(
         val structure = Structure()
         val dfs = BfsBox(limit, 10_000)
 
-        dfs.scan(seed) { pos ->
-            val chunk = chunks.at(pos) ?: return@scan BfsBox.ScanCommand.Continue
-            val block = chunk.getBlockState(pos)
+        dfs.scan(seed) { p ->
+            val chunk = chunks.at(p) ?: return@scan BfsBox.ScanCommand.Continue
+            val block = chunk.getBlockState(p)
             if (block.isAir || block.isEmpty || block.isBuilding().not) {
                 return@scan BfsBox.ScanCommand.Continue
             }
-            var w = BlockWeight.of(block).value
-            val s = BlockSupport.of(block)
-            if (chunk.getBlockState(pos.below()).let { it.isAir || it.isEmpty }) {
-                w *= s.value.f
-            }
-            structure.put(pos.asLong(), Float2.of(Block.getId(block), w))
+            val w = BlockWeight.of(block).value
+            structure.put(p.asLong(), Float2.of(Block.getId(block), w))
             BfsBox.ScanCommand.VisitNeighborWithCorners
         }
-        if (structure.isEmpty) {
-            return null
-        }
 
-        return structure
+        return if (structure.isEmpty) null else structure
     }
 }

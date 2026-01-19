@@ -3,6 +3,7 @@ package nipah.edify
 import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap
 import kotlinx.coroutines.launch
 import net.minecraft.core.BlockPos
+import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.level.ChunkPos
 import net.minecraft.world.level.Level
 import net.minecraft.world.level.LevelAccessor
@@ -138,15 +139,13 @@ object WorldData {
     var structure: IntegrityScan.Structure? = null
 
     fun onBlocksAdded(added: List<BlockPos>, level: Level) = TickScheduler.serverScope.launch {
-        applyIntegrityScan(added.first(), level)
+        if (level is ServerLevel) {
+            applyIntegrityScan(added.first(), level)
+        }
     }
 
-    suspend fun applyIntegrityScan(at: BlockPos, level: Level) {
-        structure = integrityScan.scan(at)
-
-//        removed.forEach { pos ->
-//            level.destroyBlock(pos, false)
-//        }
+    suspend fun applyIntegrityScan(at: BlockPos, level: ServerLevel) {
+        structure = integrityScan.scan(at, level)
     }
 
     fun mapChunk(chunk: LevelChunk) {
@@ -177,7 +176,10 @@ object WorldData {
                 }
             }
             if (useF != null) {
-                applyIntegrityScan(useF, scanWorker.chunks.level)
+                val level = scanWorker.chunks.level
+                if (level is ServerLevel) {
+                    applyIntegrityScan(useF, level)
+                }
             }
         }
 
