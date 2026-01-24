@@ -24,6 +24,7 @@ class IntegrityScan(
     companion object {
         private const val GLOBAL_STRENGTH = 4.0f
         private const val LEVERAGE_MULTIPLIER = 1.6f
+        private const val FLOATING_PENALTY = 50f
     }
 
     class Structure(
@@ -74,8 +75,10 @@ class IntegrityScan(
                 val state = Block.stateById(data.xi)
                 val pressure = data.y
                 val weight = BlockWeight.of(state).value
+                if (weight <= 0f) continue
                 val resistance = BlockResistance.of(state).value.f
                 val maxPressure = weight * resistance * GLOBAL_STRENGTH
+                if (maxPressure <= 0f) continue
                 val ratio = pressure / maxPressure
                 if (ratio > maxRatioSeen) {
                     maxRatioSeen = ratio
@@ -100,8 +103,10 @@ class IntegrityScan(
                 val state = Block.stateById(data.xi)
                 val pressure = data.y
                 val weight = BlockWeight.of(state).value
+                if (weight <= 0f) continue
                 val resistance = BlockResistance.of(state).value.f
                 val maxPressure = weight * resistance * GLOBAL_STRENGTH
+                if (maxPressure <= 0f) continue
                 val ratio = pressure / maxPressure
                 if (ratio > 1f) {
                     overpressured.add(entry.longKey to ratio)
@@ -207,7 +212,6 @@ class IntegrityScan(
             }
         }
 
-        // BFS for connectivity - O(N) using frontier lists
         val canReachGround = LongOpenHashSet()
         val distances = Long2IntOpenHashMap()
         distances.defaultReturnValue(Int.MAX_VALUE)
@@ -243,26 +247,20 @@ class IntegrityScan(
             frontier = nextFrontier
         }
 
-        // Processing load top-down and distance-aware (High -> Low distance)
-        // Primary Sort: Height Descending (Standard gravity)
-        // Secondary Sort: Distance Descending (Furthest blocks push to closer blocks)
         val allBlocks = LongArrayList(structure.size)
         val structIter = structure.longIterator()
         while (structIter.hasNext()) {
             allBlocks.add(structIter.next().longKey)
         }
 
-        // Sorting using custom logic
         allBlocks.sortWith { a, b ->
             val yA = BlockPos.getY(a)
             val yB = BlockPos.getY(b)
             if (yA != yB) {
-                // Higher blocks first
                 return@sortWith yB.compareTo(yA)
             }
             val distA = distances.get(a)
             val distB = distances.get(b)
-            // Further blocks first
             return@sortWith distB.compareTo(distA)
         }
 
@@ -278,107 +276,57 @@ class IntegrityScan(
             val ownWeight = BlockWeight.of(state).value
             val isGrounded = groundedBlocks.contains(longPos)
 
-            val currentLoadBits = loadOnBlock.get(longPos) // 0L if missing
+            val currentLoadBits = loadOnBlock.get(longPos)
             val loadFromAbove = if (currentLoadBits != 0L) Float.fromBits(currentLoadBits.toInt()) else 0f
             val totalLoad = ownWeight + loadFromAbove
 
-            // Identify supporters
-            // A supporter must be closure to ground (distance < current_distance) OR (distance == 0 && grounded)
-            // Or strictly below?
-            val myDist = distances.get(longPos)
-
             val belowPos = pos.below()
-            val hasDirectBelow = structure.exists(belowPos) && canReachGround.contains(belowPos.asLong())
-
-            val verticalSupporters = LongArrayList()
-            val otherSupporters = LongArrayList()
-
-            if (hasDirectBelow) {
-                verticalSupporters.add(belowPos.asLong())
-            }
-
-            // A block supports us if:
-            // 1. It exists
-            // 2. It is connected to ground
-            // 3. It is lower (y < myY) OR
-            // 4. Same height (y == myY) AND closer to ground (dist < myDist)
-
-            val height = pos.y
-            pos.forEachNeighborNoAlloc(npos) { n ->
-                val nLong = n.asLong()
-
-                // Vertical check handled above via 'belowPos' optimization, but let's check other diagnostics?
-                // Actually foreachNeighbor includes below. We must avoid double counting logic if we use generalized loop.
-                // But for horizontal, we must check 'dist < myDist'.
-
-                if (nLong == belowPos.asLong()) return@forEachNeighborNoAlloc // Already handled
-
-                if (structure.exists(nLong) && canReachGround.contains(nLong)) {
-                    val nDist = distances.get(nLong)
-
-                    if (n.y < height) {
-                        // Diagonal support? Usually acceptable if robust.
-                        // Minecraft doesn't really have diagonal gravity usually, but for structural integrity it helps.
-                        // But let's stick to Below (Vertical) and Same-level (Horizontal/Arch) for now.
-                        // Actually, if n.y < height, it's valid vertical support (offset).
-                        verticalSupporters.add(nLong)
-                    }
-                    else if (n.y == height) {
-                        // Horizontal support
-                        // Only valid if it's strictly closer to ground in BFS tree
-                        if (nDist < myDist) {
-                            otherSupporters.add(nLong)
-                        }
-                    }
-                }
-            }
+            val belowLong = belowPos.asLong()
+            val hasDirectBelow = structure.exists(belowLong) && canReachGround.contains(belowLong)
 
             val pressure: Float
             if (isGrounded) {
-                // Grounded blocks dissipate load into the world
-                pressure = ownWeight
+                pressure = totalLoad
             }
             else if (!canReachGround.contains(longPos)) {
-                // Floating block
-                pressure = totalLoad * 50f // Massive penalty for being floating
+                pressure = totalLoad * FLOATING_PENALTY
             }
             else {
-                // Distribute load
-                if (!verticalSupporters.isEmpty) {
-                    // Vertical support is efficient (1.0x)
-                    val loadPerSupport = totalLoad / verticalSupporters.size
-                    val iterator = verticalSupporters.iterator()
-                    while (iterator.hasNext()) {
-                        val supp = iterator.nextLong()
-                        val current = Float.fromBits(loadOnBlock.get(supp).toInt())
-                        loadOnBlock.put(supp, (current + loadPerSupport).toRawBits().toLong())
-                    }
+                if (hasDirectBelow) {
+                    val current = Float.fromBits(loadOnBlock.get(belowLong).toInt())
+                    loadOnBlock.put(belowLong, (current + totalLoad).toRawBits().toLong())
                     pressure = totalLoad
                 }
-                else if (!otherSupporters.isEmpty) {
-                    // Horizontal support -> We are a cantilever/beam
-
-                    val loadPerSupport = totalLoad / otherSupporters.size
-                    val iterator = otherSupporters.iterator()
-                    while (iterator.hasNext()) {
-                        val supp = iterator.nextLong()
-
-                        // Check if supporter is firmly grounded (has block below, or is ground)
-                        // This prevents leverage from propagating DOWN into the foundation
-                        val suppBelow = BlockPos.of(supp).below().asLong()
-                        val isPillar = structure.exists(suppBelow) || groundedBlocks.contains(supp)
-
-                        val loadToPass = if (isPillar) loadPerSupport else (loadPerSupport * LEVERAGE_MULTIPLIER)
-
-                        val current = Float.fromBits(loadOnBlock.get(supp).toInt())
-                        loadOnBlock.put(supp, (current + loadToPass).toRawBits().toLong())
-                    }
-                    // Our pressure is high because we are being leveraged
-                    pressure = totalLoad * LEVERAGE_MULTIPLIER
-                }
                 else {
-                    // Should technically be unreachable if 'canReachGround' is true
-                    pressure = totalLoad * 2f
+                    val myDist = distances.get(longPos)
+                    val otherSupporters = LongArrayList()
+
+                    pos.forEachHorizontalNeighborNoAlloc(npos) { n ->
+                        val nLong = n.asLong()
+                        if (structure.exists(nLong) && canReachGround.contains(nLong)) {
+                            val nDist = distances.get(nLong)
+                            if (nDist < myDist) {
+                                otherSupporters.add(nLong)
+                            }
+                        }
+                    }
+
+                    if (!otherSupporters.isEmpty) {
+                        val loadPerSupport = totalLoad / otherSupporters.size
+                        val iterator = otherSupporters.iterator()
+                        while (iterator.hasNext()) {
+                            val supp = iterator.nextLong()
+                            val suppBelow = BlockPos.of(supp).below().asLong()
+                            val isPillar = structure.exists(suppBelow) || groundedBlocks.contains(supp)
+                            val loadToPass = if (isPillar) loadPerSupport else (loadPerSupport * LEVERAGE_MULTIPLIER)
+                            val current = Float.fromBits(loadOnBlock.get(supp).toInt())
+                            loadOnBlock.put(supp, (current + loadToPass).toRawBits().toLong())
+                        }
+                        pressure = totalLoad * LEVERAGE_MULTIPLIER
+                    }
+                    else {
+                        pressure = totalLoad * 2f
+                    }
                 }
             }
             structure.put(longPos, Float2.of(Block.getId(state), pressure))
@@ -397,7 +345,7 @@ class IntegrityScan(
             }
             val w = BlockWeight.of(block).value
             structure.put(p.asLong(), Float2.of(Block.getId(block), w))
-            BfsBox.ScanCommand.VisitNeighborWithCorners
+            BfsBox.ScanCommand.VisitNeighbors
         }
 
         return if (structure.isEmpty) null else structure
