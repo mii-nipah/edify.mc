@@ -16,6 +16,7 @@ object EdifyDatagen {
 
         gen.addProvider(e.includeClient(), DebrisModelsGen(out, fs))
         gen.addProvider(e.includeClient(), DebrisBlockStatesGen(out, fs))
+        gen.addProvider(true, IntegrityTestProvider(out))
 //        gen.addProvider(e.includeClient(), BuildingBlockTagsGen(out, e.lookupProvider, fs))
     }
 }

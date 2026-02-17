@@ -408,34 +408,45 @@ fun BlockState.isNonSupporting(): Boolean {
     val id = Block.getId(this)
     if (nonSupportingCache.containsKey(id))
         return nonSupportingCache.getOrDefault(id, false);
-    val result = hasAny(
-        BlockTags.BUTTONS,
-        BlockTags.FENCES,
-        BlockTags.WALLS,
-        BlockTags.PRESSURE_PLATES,
-        BlockTags.SLABS,
-        BlockTags.STAIRS,
-        BlockTags.TRAPDOORS,
-        BlockTags.WOODEN_TRAPDOORS,
-        BlockTags.DOORS,
-        BlockTags.WOODEN_DOORS,
-        BlockTags.WOODEN_BUTTONS,
-        BlockTags.WOODEN_PRESSURE_PLATES,
-        BlockTags.WOOL_CARPETS,
-        BlockTags.BAMBOO_BLOCKS,
-        BlockTags.CORAL_PLANTS,
-        BlockTags.CLIMBABLE,
-        BlockTags.CROPS,
-        BlockTags.FLOWERS,
-        BlockTags.SAPLINGS,
-        BlockTags.SMALL_FLOWERS,
-        BlockTags.TALL_FLOWERS,
-        BlockTags.CAVE_VINES,
-        BlockTags.RAILS,
-        BlockTags.BEDS,
-        BlockTags.SNOW,
-        BlockTags.LEAVES,
-    )
+    val result = run {
+        val block = this.block
+        if (block is net.minecraft.world.level.block.IronBarsBlock) return@run true
+        if (block is net.minecraft.world.level.block.StainedGlassPaneBlock) return@run true
+        if (block is net.minecraft.world.level.block.TorchBlock) return@run true
+        if (block is net.minecraft.world.level.block.WallTorchBlock) return@run true
+        if (block is net.minecraft.world.level.block.LanternBlock) return@run true
+        if (block is net.minecraft.world.level.block.SignBlock) return@run true
+        if (block is net.minecraft.world.level.block.BannerBlock) return@run true
+        if (block is net.minecraft.world.level.block.WallBannerBlock) return@run true
+        hasAny(
+            BlockTags.BUTTONS,
+            BlockTags.FENCES,
+            BlockTags.WALLS,
+            BlockTags.PRESSURE_PLATES,
+            BlockTags.SLABS,
+            BlockTags.STAIRS,
+            BlockTags.TRAPDOORS,
+            BlockTags.WOODEN_TRAPDOORS,
+            BlockTags.DOORS,
+            BlockTags.WOODEN_DOORS,
+            BlockTags.WOODEN_BUTTONS,
+            BlockTags.WOODEN_PRESSURE_PLATES,
+            BlockTags.WOOL_CARPETS,
+            BlockTags.BAMBOO_BLOCKS,
+            BlockTags.CORAL_PLANTS,
+            BlockTags.CLIMBABLE,
+            BlockTags.CROPS,
+            BlockTags.FLOWERS,
+            BlockTags.SAPLINGS,
+            BlockTags.SMALL_FLOWERS,
+            BlockTags.TALL_FLOWERS,
+            BlockTags.CAVE_VINES,
+            BlockTags.RAILS,
+            BlockTags.BEDS,
+            BlockTags.SNOW,
+            BlockTags.LEAVES,
+        )
+    }
     nonSupportingCache.put(id, result)
     return result
 }
