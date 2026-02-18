@@ -53,7 +53,7 @@ object WorldData {
         return scans.getOrPut(level) {
             GroupScanWorker(
                 ChunkAccess(level),
-                Configs.startup.worldData.maxConcurrentScans.get()
+                Configs.common.worldData.maxConcurrentScans.get()
             )
         }
     }
@@ -139,7 +139,7 @@ object WorldData {
     var structure: IntegrityScan.Structure? = null
 
     fun onBlocksAdded(added: List<BlockPos>, level: Level) = TickScheduler.serverScope.launch {
-        if (level is ServerLevel) {
+        if (level is ServerLevel && Configs.common.structuralIntegrity.enabled.get()) {
             applyIntegrityScan(added.first(), level)
         }
     }
@@ -175,7 +175,7 @@ object WorldData {
                     useF = npos.immutable()
                 }
             }
-            if (useF != null) {
+            if (useF != null && Configs.common.structuralIntegrity.enabled.get()) {
                 val level = scanWorker.chunks.level
                 if (level is ServerLevel) {
                     applyIntegrityScan(useF, level)

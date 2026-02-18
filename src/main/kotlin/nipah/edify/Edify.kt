@@ -9,6 +9,8 @@ import net.neoforged.fml.config.ModConfig
 import net.neoforged.fml.event.lifecycle.FMLClientSetupEvent
 import net.neoforged.fml.event.lifecycle.FMLCommonSetupEvent
 import net.neoforged.fml.event.lifecycle.FMLDedicatedServerSetupEvent
+import net.neoforged.neoforge.client.gui.ConfigurationScreen
+import net.neoforged.neoforge.client.gui.IConfigScreenFactory
 import net.neoforged.neoforge.common.NeoForge
 import nipah.edify.attachment.ModAttachments
 import nipah.edify.block.ModBlocks
@@ -45,6 +47,7 @@ class Edify(private val container: ModContainer) {
         LOGGER.log(Level.INFO, "Hello world!")
 
         container.registerConfig(ModConfig.Type.STARTUP, Configs.startupSpec)
+        container.registerConfig(ModConfig.Type.COMMON, Configs.commonSpec)
 
         // Register the KDeferredRegister to the mod-specific event bus
         ModBlocks.REGISTRY.register(MOD_BUS)
@@ -56,6 +59,10 @@ class Edify(private val container: ModContainer) {
 
         val obj = runForDist(clientTarget = {
             MOD_BUS.addListener(::onClientSetup)
+            container.registerExtensionPoint(
+                IConfigScreenFactory::class.java,
+                IConfigScreenFactory { _, parent -> ConfigurationScreen(container, parent) }
+            )
             Minecraft.getInstance()
         }, serverTarget = {
             MOD_BUS.addListener(::onServerSetup)

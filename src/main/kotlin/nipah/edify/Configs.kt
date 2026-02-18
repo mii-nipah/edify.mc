@@ -3,18 +3,30 @@ package nipah.edify
 import net.neoforged.neoforge.common.ModConfigSpec
 import nipah.edify.utils.withSection
 
+enum class CollapseMode {
+    PHYSICS,
+    ACE_OF_SPADES,
+}
+
 object Configs {
-    val startup: Server
+    val startup: Startup
     val startupSpec: ModConfigSpec
+    val common: Server
+    val commonSpec: ModConfigSpec
 
     init {
         val startupPair = ModConfigSpec.Builder()
-            .configure(::Server)
+            .configure(::Startup)
         startup = startupPair.left
         startupSpec = startupPair.right
+
+        val commonPair = ModConfigSpec.Builder()
+            .configure(::Server)
+        common = commonPair.left
+        commonSpec = commonPair.right
     }
 
-    class Server(builder: ModConfigSpec.Builder) {
+    class Startup(builder: ModConfigSpec.Builder) {
         class Threading(builder: ModConfigSpec.Builder) {
             var threads: ModConfigSpec.IntValue private set
             var threadsTicksPerSecondPerIteration: ModConfigSpec.IntValue private set
@@ -40,7 +52,6 @@ object Configs {
                         comment("Increase this if you want to reduce CPU usage when the server is busy, at the cost of responsiveness.")
                         defineInRange("sleepWhenServerIsNotAllowing", 100, 0, 10_000)
                     }
-
                     numberOfDirectlyProcessedOperationsPerSleep = run {
                         comment("Number of operations to process directly when the server is allowing threaded operations.")
                         comment("This is basically a way to make the processor sleep for a bit when it's processing many operations in a short period of time, decreasing changes of throttling.")
@@ -56,6 +67,10 @@ object Configs {
             }
         }
 
+        val threading = Threading(builder)
+    }
+
+    class Server(builder: ModConfigSpec.Builder) {
         class ChunkEvents(builder: ModConfigSpec.Builder) {
             var ticksToBatchRemovalOperations: ModConfigSpec.IntValue private set
 
@@ -144,10 +159,52 @@ object Configs {
             }
         }
 
-        val threading = Threading(builder)
+        class StructuralIntegrity(builder: ModConfigSpec.Builder) {
+            var enabled: ModConfigSpec.BooleanValue private set
+
+            init {
+                builder.withSection("structural_integrity", "Options that control structural integrity simulation") {
+                    enabled = run {
+                        comment("Whether structural integrity simulation is enabled.")
+                        comment("When enabled, structures that are overstressed will progressively break apart.")
+                        comment("Disable this if you only want floating structure collapse without stress simulation.")
+                        define("enabled", true)
+                    }
+                }
+            }
+        }
+
+        class Collapse(builder: ModConfigSpec.Builder) {
+            var mode: ModConfigSpec.EnumValue<CollapseMode> private set
+            var useDebris: ModConfigSpec.BooleanValue private set
+            var aceOfSpadesDelay: ModConfigSpec.IntValue private set
+
+            init {
+                builder.withSection("collapse", "Options that control how floating structures collapse") {
+                    mode = run {
+                        comment("The collapse mode for floating structures.")
+                        comment("PHYSICS: structures fall with gravity, collide with terrain, and interact with entities.")
+                        comment("ACE_OF_SPADES: structures briefly appear as a floating model, then break apart in place.")
+                        defineEnum("mode", CollapseMode.PHYSICS)
+                    }
+                    useDebris = run {
+                        comment("Whether collapsed blocks produce debris piles.")
+                        comment("When disabled, collapsed blocks are fully destroyed with no debris or item drops.")
+                        define("useDebris", true)
+                    }
+                    aceOfSpadesDelay = run {
+                        comment("Number of server ticks the floating structure model is visible before breaking apart in ACE_OF_SPADES mode.")
+                        defineInRange("aceOfSpadesDelay", 40, 1, 200)
+                    }
+                }
+            }
+        }
+
         val chunkEvents = ChunkEvents(builder)
         val worldData = WorldData(builder)
         val groupScan = GroupScan(builder)
         val chunkData = ChunkData(builder)
+        val structuralIntegrity = StructuralIntegrity(builder)
+        val collapse = Collapse(builder)
     }
 }

@@ -53,7 +53,7 @@ class ChunkData(val chunkPos: ChunkPos, chunk: LevelChunk) {
 
     init {
         val chanceToFoundation =
-            Configs.startup.chunkData.nonBedrockFoundationChance.get().toFloat()
+            Configs.common.chunkData.nonBedrockFoundationChance.get().toFloat()
         val wpos = BlockPos.MutableBlockPos()
         val upperBound = (maxBuildHeight - minBuildHeight) / 2
         chunk.forEachBlock { pos ->

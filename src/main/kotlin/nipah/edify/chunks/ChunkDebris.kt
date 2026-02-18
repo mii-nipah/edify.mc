@@ -420,6 +420,7 @@ class ChunkDebris: INBTSerializable<CompoundTag> {
 }
 
 fun Level.setDebrisAt(pos: BlockPos, state: BlockState, depth: Int = 0): Boolean {
+    if (depth == 0 && nipah.edify.Configs.common.collapse.useDebris.get().not()) return false
     if (depth > 10) return false
 
     val onGroup = blockcastRay(pos, BlockPos(0, -1, 0), 50) ?: return false

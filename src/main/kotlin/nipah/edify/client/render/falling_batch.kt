@@ -6,9 +6,11 @@ import net.minecraft.core.BlockPos
 import net.minecraft.core.particles.ParticleTypes
 import net.minecraft.resources.ResourceKey
 import net.minecraft.server.level.ServerLevel
+import net.minecraft.sounds.SoundSource
 import net.minecraft.world.level.Level
 import net.minecraft.world.level.block.state.BlockState
 import net.minecraft.world.phys.AABB
+import nipah.edify.Configs
 import nipah.edify.block.DebrisBlock
 import nipah.edify.chunks.setDebrisAt
 import nipah.edify.spatial.SparseSpatialGrid
@@ -37,6 +39,8 @@ class FallingBatch(
     val space: SparseSpatialGrid,
     val levelKey: ResourceKey<Level>,
     val tickCollisions: LongOpenHashSet = LongOpenHashSet(10_000),
+    val selfDestructMode: Boolean = false,
+    val selfDestructDelay: Int = 15,
 ) {
     companion object {
         fun computeAabb(
@@ -112,7 +116,40 @@ class FallingBatch(
 //        }
     }
 
+    private var selfDestructTicks = 0
+
     fun tickServer(level: ServerLevel): LongArrayList {
+        if (selfDestructMode) {
+            selfDestructTicks++
+            if (selfDestructTicks < selfDestructDelay) return LongArrayList()
+            val allRemoved = LongArrayList()
+            val useDebris = Configs.common.collapse.useDebris.get()
+            val offset = pos.toVec3i() - origin.toVec3i()
+            for ((bpos, state) in blocks.toList()) {
+                allRemoved.add(bpos.asLong())
+                if (useDebris) {
+                    level.setDebrisAt(bpos, state)
+                }
+                val visualPos = bpos.offset(offset)
+                level.sendParticles(
+                    ParticleTypes.DUST_PLUME,
+                    visualPos.x + 0.5, visualPos.y + 0.5, visualPos.z + 0.5,
+                    3, 0.25, 0.25, 0.25, 0.01
+                )
+            }
+            if (blocks.isNotEmpty()) {
+                val center = blocks[blocks.size / 2].pos.offset(offset)
+                level.playSound(
+                    null, center,
+                    blocks.first().state.soundType.breakSound,
+                    SoundSource.BLOCKS,
+                    4.0f, 0.7f + level.random.nextFloat() * 0.3f
+                )
+            }
+            blocks.clear()
+            return allRemoved
+        }
+
         tickCollisions.clear()
         level.getBlockCollisionsOptimized(aabb, tickCollisions)
         val entities = level.getEntities(null, aabb)

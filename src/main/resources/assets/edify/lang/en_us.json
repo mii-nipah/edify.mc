@@ -2,5 +2,51 @@
   "itemGroup.edify": "Example Mod Tab",
   "block.edify.example_block": "Example Block",
   "item.edify.example_item": "Example Item",
-  "block.edify.debris": "Debris"
+  "block.edify.debris": "Debris",
+
+  "edify.configuration.threading": "Threading",
+  "edify.configuration.threads": "Worker Threads",
+  "edify.configuration.threads.tooltip": "Number of threads to use for operation scheduling. Increase for high core counts, decrease if you get lag spikes.",
+  "edify.configuration.threadsTicksPerSecondPerIteration": "Ticks Per Iteration",
+  "edify.configuration.threadsTicksPerSecondPerIteration.tooltip": "How much a thread waits between processing schedules when the server signals ready.",
+  "edify.configuration.sleepWhenServerIsNotAllowing": "Idle Sleep (ms)",
+  "edify.configuration.sleepWhenServerIsNotAllowing.tooltip": "Milliseconds to sleep when server is busy. Higher = less CPU usage, slower response.",
+  "edify.configuration.numberOfDirectlyProcessedOperationsPerSleep": "Operations Per Sleep",
+  "edify.configuration.numberOfDirectlyProcessedOperationsPerSleep.tooltip": "Number of operations to process before sleeping. Higher = more responsive, more CPU.",
+  "edify.configuration.timeToSleepBetweenBatchesOfDirectOperations": "Batch Sleep (ms)",
+  "edify.configuration.timeToSleepBetweenBatchesOfDirectOperations.tooltip": "Milliseconds to sleep between batches of operations.",
+
+  "edify.configuration.chunk_events": "Chunk Events",
+  "edify.configuration.ticksToBatchRemovalOperations": "Batch Removal Delay",
+  "edify.configuration.ticksToBatchRemovalOperations.tooltip": "Server ticks to wait before processing queued block removals. Higher = fewer concurrent scans but slower response.",
+
+  "edify.configuration.world_data": "World Data",
+  "edify.configuration.maxConcurrentScans": "Max Concurrent Scans",
+  "edify.configuration.maxConcurrentScans.tooltip": "Maximum concurrent group scans. More = faster but higher memory usage.",
+
+  "edify.configuration.group_scan": "Group Scanning",
+  "edify.configuration.limit": "Scan Block Limit",
+  "edify.configuration.limit.tooltip": "Maximum blocks per group scan. Too high = false positives, too low = missed floating structures.",
+  "edify.configuration.scanPerTick": "Blocks Per Tick",
+  "edify.configuration.scanPerTick.tooltip": "Blocks to scan per server tick. Higher = faster scans, more CPU usage.",
+  "edify.configuration.blocksPerFloatingSupports": "Blocks Per Floating Support",
+  "edify.configuration.blocksPerFloatingSupports.tooltip": "How many solid blocks a single floating support block can hold up.",
+  "edify.configuration.floatingSupportsNaturalIslandLimit": "Natural Island Limit",
+  "edify.configuration.floatingSupportsNaturalIslandLimit.tooltip": "Max floating blocks before treating a structure as a natural island (optimization for the End).",
+
+  "edify.configuration.chunk_data": "Chunk Data",
+  "edify.configuration.nonBedrockFoundationChance": "Foundation Chance",
+  "edify.configuration.nonBedrockFoundationChance.tooltip": "Chance for a non-bedrock block connected to bedrock to be a foundation. 0 = only bedrock, 1 = all natural blocks.",
+
+  "edify.configuration.structural_integrity": "Structural Integrity",
+  "edify.configuration.enabled": "Enabled",
+  "edify.configuration.enabled.tooltip": "When enabled, overstressed structures break apart progressively. Disable for collapse-only mode.",
+
+  "edify.configuration.collapse": "Collapse",
+  "edify.configuration.mode": "Collapse Mode",
+  "edify.configuration.mode.tooltip": "PHYSICS: structures fall with gravity and collide. ACE_OF_SPADES: structures pause mid-air then break apart in place.",
+  "edify.configuration.useDebris": "Use Debris",
+  "edify.configuration.useDebris.tooltip": "Whether collapses produce debris piles. When off, blocks are fully destroyed.",
+  "edify.configuration.aceOfSpadesDelay": "Ace of Spades Delay",
+  "edify.configuration.aceOfSpadesDelay.tooltip": "Ticks the floating structure stays visible before breaking in Ace of Spades mode."
 }

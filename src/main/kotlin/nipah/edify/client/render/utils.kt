@@ -2,6 +2,8 @@ package nipah.edify.client.render
 
 import net.minecraft.core.BlockPos
 import net.minecraft.world.level.Level
+import nipah.edify.CollapseMode
+import nipah.edify.Configs
 import nipah.edify.entities.ModEntities
 import nipah.edify.spatial.SparseSpatialGrid
 import nipah.edify.types.BlockWeight
@@ -10,6 +12,7 @@ import nipah.edify.utils.toVec3f
 import org.joml.Quaternionf
 import org.joml.Vector3f
 import kotlin.math.absoluteValue
+import kotlin.random.Random
 
 fun createBatch(
     level: Level,
@@ -17,6 +20,9 @@ fun createBatch(
     origin: BlockPos = blocks.first(),
 ) {
     if (blocks.isEmpty()) return
+
+    val collapseMode = Configs.common.collapse.mode.get()
+
     val computedBlocks = blocks.map { pos ->
         pos to level.getBlockState(pos)
     }
@@ -29,15 +35,26 @@ fun createBatch(
 
     val lowestFootPos = blocks.minByOrNull { it.y } ?: origin
 
-    val velocity = Vector3f(
-        centerOfMass.x - origin.x.toFloat(),
-        centerOfMass.y - origin.y.toFloat(),
-        centerOfMass.z - origin.z.toFloat()
-    ).normalize().mul(-0.1f)
-    velocity.x *= -1f
-    velocity.z *= -1f
-    velocity.y = 0f
-    velocity.y = (-(velocity.length() * 1.15f).absoluteValue).coerceAtMost(-0.25f)
+    val isSelfDestruct = collapseMode == CollapseMode.ACE_OF_SPADES
+
+    val velocity = if (isSelfDestruct) {
+        Vector3f(
+            (Random.nextFloat() - 0.5f) * 0.01f,
+            0f,
+            (Random.nextFloat() - 0.5f) * 0.01f
+        )
+    } else {
+        Vector3f(
+            centerOfMass.x - origin.x.toFloat(),
+            centerOfMass.y - origin.y.toFloat(),
+            centerOfMass.z - origin.z.toFloat()
+        ).normalize().mul(-0.1f).also {
+            it.x *= -1f
+            it.z *= -1f
+            it.y = 0f
+            it.y = (-(it.length() * 1.15f).absoluteValue).coerceAtMost(-0.25f)
+        }
+    }
 
     val space = run {
         val space = SparseSpatialGrid(
@@ -54,14 +71,16 @@ fun createBatch(
         pos = Vector3f(origin.x.toFloat(), origin.y.toFloat(), origin.z.toFloat()),
         vel = velocity,
         centerOfMass = centerOfMass,
+        gravity = if (isSelfDestruct) 0.06f else velocity.y.absoluteValue,
         totalWeight = totalWeight,
         foot = lowestFootPos.toVec3f(),
         rotation = Quaternionf(),
         blocks = computedBlocks.toMutableList(),
         space = space,
-        levelKey = level.dimension()
+        levelKey = level.dimension(),
+        selfDestructMode = isSelfDestruct,
+        selfDestructDelay = if (isSelfDestruct) Configs.common.collapse.aceOfSpadesDelay.get() else 0,
     )
-//    BatchRenderer.add(batch)
 
     val entity = ModEntities.fallingStructure.value().create(level)!!
     entity.moveTo(
