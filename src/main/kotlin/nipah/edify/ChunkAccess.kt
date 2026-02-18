@@ -12,7 +12,7 @@ data class ChunkAccess(val level: Level) {
     private val chunks = Long2ObjectOpenHashMap<LevelChunk>()
 
     init {
-        ChunkEvents.listenToChunkUnloadWeak(this) { cpos ->
+        ChunkEvents.listenToChunkUnloadWeak(this) { _, cpos ->
             chunks.remove(cpos.toLong())
         }
     }

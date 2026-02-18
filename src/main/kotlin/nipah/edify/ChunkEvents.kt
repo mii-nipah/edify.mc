@@ -4,13 +4,13 @@ import net.minecraft.core.BlockPos
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.entity.item.FallingBlockEntity
 import net.minecraft.world.level.ChunkPos
+import net.minecraft.world.level.LevelAccessor
 import net.minecraft.world.level.chunk.LevelChunk
 import net.neoforged.bus.api.SubscribeEvent
 import net.neoforged.neoforge.client.event.ClientTickEvent
 import net.neoforged.neoforge.event.level.BlockEvent
 import net.neoforged.neoforge.event.level.ChunkEvent
 import net.neoforged.neoforge.event.tick.ServerTickEvent
-import nipah.edify.client.render.BatchRenderer
 import nipah.edify.events.UniversalBlockEvent
 import nipah.edify.gizmos.Depth
 import nipah.edify.gizmos.Gizmos
@@ -20,33 +20,10 @@ import nipah.edify.utils.TickScheduler
 import java.util.*
 
 object ChunkEvents {
-//    @SubscribeEvent
-//    fun onClientTick(e: ClientTickEvent.Post) {
-//        var serverLevel = serverLevel
-//        if (serverLevel == null) return
-//        val mc = Minecraft.getInstance()
-//        val player = mc.player ?: return
-//        val level = player.level() ?: return
-//        if (level.isClientSide.not()) return
-//
-//        val lookingAt = player.pick(20.0, 0.0f, false) as? BlockHitResult ?: return
-//        val pos = lookingAt.blockPos
-//        val chunkPos = ChunkPos(pos)
-//        val cdata = WorldData.getChunkData(serverLevel, chunkPos.toLong()) ?: return
-//        val lpos = pos.toLocalPos()
-//        val isFoundation = cdata.foundationAt(lpos.x, lpos.y, lpos.z)
-//        if (isFoundation) {
-//            Gizmos.block(pos, Gizmos.Color.green)
-//        }
-//        val closestFoundations = cdata.findClosestFoundations(lpos.x, lpos.y, lpos.z, 300)
-//        for (wpos in closestFoundations) {
-//            Gizmos.block(wpos, Gizmos.Color.yellow, Depth.XRAY)
-//        }
-//    }
 
     @SubscribeEvent
     fun onClientTick(e: ClientTickEvent.Post) {
-        val map = WorldData.structure ?: return
+        val map = session?.worldData?.structure ?: return
         try {
             map.forEach { pos, state, pressure ->
                 val w = BlockWeight.of(state)
@@ -65,85 +42,67 @@ object ChunkEvents {
         }
     }
 
-    private var serverLevel: ServerLevel? = null
-
     @SubscribeEvent
     fun onChunkLoad(e: ChunkEvent.Load) {
         if (e.level.isClientSide) return
-        serverLevel = e.level as? ServerLevel
         val pos = e.chunk.pos
         TickScheduler.scheduleServer(10) {
-            val chunk = e.level.chunkSource.getChunkNow(pos.x, pos.z)
-            if (chunk != null) {
-                WorldData.mapChunk(chunk)
-            }
+            val chunk = e.level.chunkSource.getChunkNow(pos.x, pos.z) ?: return@scheduleServer
+            for (listener in weakChunkLoadListeners.values) listener(chunk)
         }
     }
 
-    private val unloadListeners = mutableListOf<(ChunkPos) -> Unit>()
-    private val weakUnloadListeners = WeakHashMap<Any, (ChunkPos) -> Unit>()
-    fun listenToChunkUnload(listener: (ChunkPos) -> Unit): () -> Unit {
-        unloadListeners.add(listener)
-        return {
-            unloadListeners.remove(listener)
-        }
-    }
+    private val weakUnloadListeners = WeakHashMap<Any, (LevelAccessor, ChunkPos) -> Unit>()
+    private val weakBlockRemovedListeners = WeakHashMap<Any, (UniversalBlockEvent.BlockRemovedBatch) -> Unit>()
+    private val weakServerTickListeners = WeakHashMap<Any, (ServerTickEvent.Post) -> Unit>()
+    private val weakBatchedListeners = WeakHashMap<Any, (List<Triple<LevelChunk, BlockPos, BlockChangeKind>>) -> Unit>()
+    private val weakChunkLoadListeners = WeakHashMap<Any, (LevelChunk) -> Unit>()
 
-    fun listenToChunkUnloadWeak(owner: Any, listener: (ChunkPos) -> Unit) {
+    fun listenToChunkUnloadWeak(owner: Any, listener: (LevelAccessor, ChunkPos) -> Unit) {
         weakUnloadListeners[owner] = listener
+    }
+
+    fun listenToBlockRemovedWeak(owner: Any, listener: (UniversalBlockEvent.BlockRemovedBatch) -> Unit) {
+        weakBlockRemovedListeners[owner] = listener
+    }
+
+    fun listenToServerTickWeak(owner: Any, listener: (ServerTickEvent.Post) -> Unit) {
+        weakServerTickListeners[owner] = listener
+    }
+
+    fun listenToBatchedBlockChangesWeak(owner: Any, listener: (List<Triple<LevelChunk, BlockPos, BlockChangeKind>>) -> Unit) {
+        weakBatchedListeners[owner] = listener
+    }
+
+    fun listenToChunkLoadWeak(owner: Any, listener: (LevelChunk) -> Unit) {
+        weakChunkLoadListeners[owner] = listener
     }
 
     @SubscribeEvent
     fun onChunkUnload(e: ChunkEvent.Unload) {
         if (e.level.isClientSide) return
         val pos = e.chunk.pos
-        WorldData.unloadChunkData(e.level, pos)
-
-        for (listener in unloadListeners) {
-            listener(pos)
-        }
-        for (listener in weakUnloadListeners.values) {
-            listener(pos)
-        }
+        for (listener in weakUnloadListeners.values) listener(e.level, pos)
     }
 
     private val queued = mutableSetOf<Triple<LevelChunk, BlockPos, BlockChangeKind>>()
-    private val listeners = mutableListOf<(LevelChunk, BlockPos, BlockChangeKind) -> Unit>()
-    private val batchedListeners = mutableListOf<(List<Triple<LevelChunk, BlockPos, BlockChangeKind>>) -> Unit>()
-    fun listenToBlockChanges(listener: (LevelChunk, BlockPos, BlockChangeKind) -> Unit) {
-        listeners.add(listener)
-    }
-
-    fun listenToBatchedBlockChanges(listener: (List<Triple<LevelChunk, BlockPos, BlockChangeKind>>) -> Unit) {
-        batchedListeners.add(listener)
-    }
-
     private var serverTicks = 0
 
     @SubscribeEvent
     fun onServerTick(ev: ServerTickEvent.Post) {
+        for (listener in weakServerTickListeners.values) listener(ev)
         val ticksBetweenBatches = Configs.common.chunkEvents.ticksToBatchRemovalOperations.get()
         if (serverTicks % ticksBetweenBatches == 0) {
-            if (queued.isEmpty().not()) {
-                for (cp in queued) {
-                    // Notify batched listeners
-                    val batch = queued.toList()
-                    for (batchedListener in batchedListeners) {
-                        batchedListener(batch)
-                    }
-                    // Notify listeners
-                    for (listener in listeners) {
-                        listener(cp.first, cp.second, cp.third)
-                    }
-                }
+            if (queued.isNotEmpty()) {
+                val batch = queued.toList()
+                for (listener in weakBatchedListeners.values) listener(batch)
                 queued.clear()
             }
         }
-
         serverTicks++
-//        if (serverTicks % 5 != 0) return
-        BatchRenderer.tick()
-        for (batch in BatchRenderer.batches) {
+        val session = session ?: return
+        session.batchRenderer.tick()
+        for (batch in session.batchRenderer.batches) {
             batch.tickServer(
                 ev.server.getLevel(batch.levelKey) ?: continue
             )
@@ -173,6 +132,7 @@ object ChunkEvents {
 
     @SubscribeEvent
     fun onRemoveBatch(e: UniversalBlockEvent.BlockRemovedBatch) {
+        for (listener in weakBlockRemovedListeners.values) listener(e)
         var blocks = e.blocks
         if (blocks.isEmpty()) return
         if (blocks.size > 60) {
@@ -197,6 +157,16 @@ object ChunkEvents {
             } ?: continue
             queued.add(Triple(chunk, pos, BlockChangeKind.Broken))
         }
+    }
+
+    internal fun onSessionStart() {
+        queued.clear()
+        serverTicks = 0
+        weakUnloadListeners.clear()
+        weakBlockRemovedListeners.clear()
+        weakServerTickListeners.clear()
+        weakBatchedListeners.clear()
+        weakChunkLoadListeners.clear()
     }
 }
 

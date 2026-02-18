@@ -81,7 +81,7 @@ class GroupScan(
 
     private fun isFoundation(pos: BlockPos): Boolean {
         val chunkPos = ChunkPos.asLong(pos)
-        val chunk = WorldData.getChunkData(chunks.level, chunkPos) ?: return true
+        val chunk = session?.worldData?.getChunkData(chunks.level, chunkPos) ?: return true
         val lposX = pos.toLocalX()
         val lposZ = pos.toLocalZ()
         return chunk.foundationAt(lposX, pos.y, lposZ)

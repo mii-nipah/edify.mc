@@ -6,6 +6,7 @@ import it.unimi.dsi.fastutil.longs.Long2IntOpenHashMap
 import it.unimi.dsi.fastutil.longs.Long2LongOpenHashMap
 import it.unimi.dsi.fastutil.longs.LongArrayList
 import it.unimi.dsi.fastutil.longs.LongOpenHashSet
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import net.minecraft.commands.arguments.blocks.BlockStateParser
@@ -28,6 +29,7 @@ import java.util.UUID
 
 class IntegrityScan(
     val chunks: ChunkAccess,
+    private val scope: CoroutineScope,
     private val limit: Int = 30_000,
 ) {
     companion object {
@@ -448,7 +450,7 @@ class IntegrityScan(
             }
             if (structure != null && isNew && structure !in simulatingStructures) {
                 simulatingStructures.add(structure)
-                TickScheduler.serverScope.launch {
+                scope.launch {
                     try {
                         simulateStructure(structure, level)
                     }

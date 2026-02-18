@@ -1,6 +1,7 @@
 package nipah.edify
 
 import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import net.minecraft.core.BlockPos
 import net.minecraft.server.level.ServerLevel
@@ -9,10 +10,7 @@ import net.minecraft.world.level.Level
 import net.minecraft.world.level.LevelAccessor
 import net.minecraft.world.level.block.LiquidBlock
 import net.minecraft.world.level.chunk.LevelChunk
-import net.neoforged.bus.api.SubscribeEvent
-import net.neoforged.fml.common.EventBusSubscriber
 import net.neoforged.neoforge.event.tick.ServerTickEvent
-import net.neoforged.neoforge.server.ServerLifecycleHooks
 import nipah.edify.block.DebrisBlock
 import nipah.edify.chunks.ChunkDebris
 import nipah.edify.chunks.getDebrisStateAt
@@ -21,7 +19,6 @@ import nipah.edify.chunks.setDebrisAt
 import nipah.edify.client.render.createBatch
 import nipah.edify.collections.ConcurrentUniqueQueue
 import nipah.edify.events.UniversalBlockEvent
-import nipah.edify.utils.TickScheduler
 import nipah.edify.utils.forEachNeighborNoAlloc
 import nipah.edify.utils.nearbyPos
 import nipah.edify.utils.not
@@ -32,9 +29,16 @@ import nipah.edify.utils.toLocalZ
 import kotlin.collections.set
 import kotlin.random.Random
 
-@EventBusSubscriber
-object WorldData {
+class WorldData(private val scope: CoroutineScope) {
     private val chunkData = mutableMapOf<LevelAccessor, Long2ObjectOpenHashMap<ChunkData>>()
+
+    init {
+        ChunkEvents.listenToBlockRemovedWeak(this, ::universalBlockRemoval)
+        ChunkEvents.listenToServerTickWeak(this, ::serverTick)
+        ChunkEvents.listenToBatchedBlockChangesWeak(this, ::onBatchedBlockChanges)
+        ChunkEvents.listenToChunkLoadWeak(this, ::mapChunk)
+        ChunkEvents.listenToChunkUnloadWeak(this) { level, pos -> unloadChunkData(level, pos) }
+    }
 
     private fun setChunkData(level: LevelAccessor, chunkPosLong: Long, data: ChunkData) {
         val map = chunkData.getOrPut(level) { Long2ObjectOpenHashMap() }
@@ -58,7 +62,6 @@ object WorldData {
         }
     }
 
-    @SubscribeEvent
     fun universalBlockRemoval(e: UniversalBlockEvent.BlockRemovedBatch) {
         if (e.level.isClientSide) return
         val pos = BlockPos.MutableBlockPos()
@@ -76,7 +79,6 @@ object WorldData {
     private var tickCounter = 0
     private var removalQueue = ConcurrentUniqueQueue<QueuedRemoval>()
 
-    @SubscribeEvent
     fun serverTick(e: ServerTickEvent.Post) {
         tickCounter++
         if (tickCounter % 20 == 0) {
@@ -109,43 +111,37 @@ object WorldData {
         }
     }
 
-    init {
-        ChunkEvents.listenToBatchedBlockChanges { changes ->
-            val added = changes
-                .mapNotNull { it.takeIf { it.third is BlockChangeKind.Placed }?.second }
-            if (added.isNotEmpty()) {
-                onBlocksAdded(added, changes.first().first.level!!)
-            }
-
-            val removed = changes
-                .filter { it.third is BlockChangeKind.Broken }
-            val landed = changes
-                .filter { it.third is BlockChangeKind.Landed }
-
-            if (removed.isEmpty()) return@listenToBatchedBlockChanges
-            onBlocksRemoved(
-                removed.map { it.second },
-                getScanWorker(removed.first().first.level!!)
-            )
-        }
-    }
-
-    private val integrityScan by lazy {
-        IntegrityScan(
-            ChunkAccess(ServerLifecycleHooks.getCurrentServer()!!.getLevel(Level.OVERWORLD)!!)
-        )
+    private var integrityScan: IntegrityScan? = null
+    private fun getIntegrityScan(level: ServerLevel): IntegrityScan {
+        return integrityScan ?: IntegrityScan(ChunkAccess(level), scope).also { integrityScan = it }
     }
 
     var structure: IntegrityScan.Structure? = null
 
-    fun onBlocksAdded(added: List<BlockPos>, level: Level) = TickScheduler.serverScope.launch {
+    fun onBatchedBlockChanges(changes: List<Triple<LevelChunk, BlockPos, BlockChangeKind>>) {
+        val added = changes
+            .mapNotNull { it.takeIf { it.third is BlockChangeKind.Placed }?.second }
+        if (added.isNotEmpty()) {
+            onBlocksAdded(added, changes.first().first.level!!)
+        }
+
+        val removed = changes
+            .filter { it.third is BlockChangeKind.Broken }
+        if (removed.isEmpty()) return
+        onBlocksRemoved(
+            removed.map { it.second },
+            getScanWorker(removed.first().first.level!!)
+        )
+    }
+
+    fun onBlocksAdded(added: List<BlockPos>, level: Level) = scope.launch {
         if (level is ServerLevel && Configs.common.structuralIntegrity.enabled.get()) {
             applyIntegrityScan(added.first(), level)
         }
     }
 
     suspend fun applyIntegrityScan(at: BlockPos, level: ServerLevel) {
-        structure = integrityScan.scan(at, level)
+        structure = getIntegrityScan(level).scan(at, level)
     }
 
     fun mapChunk(chunk: LevelChunk) {
@@ -155,7 +151,7 @@ object WorldData {
         setChunkData(level, chunkPos.toLong(), mapped)
     }
 
-    private fun onBlocksRemoved(removed: List<BlockPos>, scanWorker: GroupScanWorker) = TickScheduler.serverScope.launch {
+    private fun onBlocksRemoved(removed: List<BlockPos>, scanWorker: GroupScanWorker) = scope.launch {
         val seed = removed.distinct()
         if (scanWorker.isAvailable().not) {
             removalQueue.add(QueuedRemoval(seed, scanWorker))

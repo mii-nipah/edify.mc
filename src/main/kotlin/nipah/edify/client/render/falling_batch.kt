@@ -361,12 +361,13 @@ class FallingBatch(
     }
 }
 
-object BatchRenderer {
+class BatchRenderer {
     val batches = CopyOnWriteArrayList<FallingBatch>()
 
     fun add(batch: FallingBatch) = batches.add(batch)
-    fun clear() {
-        batches.forEach { it.close() }; batches.clear()
+    fun close() {
+        batches.forEach { it.close() }
+        batches.clear()
     }
 
     fun tick() {

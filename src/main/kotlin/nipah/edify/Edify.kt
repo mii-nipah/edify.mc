@@ -12,6 +12,8 @@ import net.neoforged.fml.event.lifecycle.FMLDedicatedServerSetupEvent
 import net.neoforged.neoforge.client.gui.ConfigurationScreen
 import net.neoforged.neoforge.client.gui.IConfigScreenFactory
 import net.neoforged.neoforge.common.NeoForge
+import net.neoforged.neoforge.event.server.ServerStartingEvent
+import net.neoforged.neoforge.event.server.ServerStoppingEvent
 import nipah.edify.attachment.ModAttachments
 import nipah.edify.block.ModBlocks
 import nipah.edify.entities.ModEntities
@@ -55,6 +57,15 @@ class Edify(private val container: ModContainer) {
         ModAttachments.REGISTRY.register(MOD_BUS)
         NeoForge.EVENT_BUS.register(TickScheduler)
         NeoForge.EVENT_BUS.register(ChunkEvents)
+
+        NeoForge.EVENT_BUS.addListener<ServerStartingEvent> { e ->
+            ChunkEvents.onSessionStart()
+            EdifySession.start(e.server)
+        }
+
+        NeoForge.EVENT_BUS.addListener<ServerStoppingEvent> {
+            EdifySession.stop()
+        }
 //        WorldData.groupAt(BlockPos.ZERO)
 
         val obj = runForDist(clientTarget = {

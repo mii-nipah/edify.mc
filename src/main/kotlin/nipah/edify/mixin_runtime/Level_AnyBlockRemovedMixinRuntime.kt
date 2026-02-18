@@ -44,4 +44,9 @@ object Level_AnyBlockRemovedMixinRuntime {
         val collected = collectedPerTick.computeIfAbsent(level) { LongOpenHashSet() }
         collected.add(pos.asLong())
     }
+
+    fun reset() {
+        collectedPerTick.clear()
+        shouldPreventPosting = false
+    }
 }

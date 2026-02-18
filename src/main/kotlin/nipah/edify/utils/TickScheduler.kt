@@ -1,9 +1,7 @@
 package nipah.edify.utils
 
 import kotlinx.coroutines.CoroutineDispatcher
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Runnable
-import kotlinx.coroutines.SupervisorJob
 import net.minecraft.client.Minecraft
 import net.minecraft.server.MinecraftServer
 import net.neoforged.bus.api.SubscribeEvent
@@ -134,13 +132,6 @@ object TickScheduler {
         }
     }
 
-    val serverScope = CoroutineScope(
-        SupervisorJob() + ServerDispatcher
-    )
-    val clientScope = CoroutineScope(
-        SupervisorJob() + ClientDispatcher
-    )
-
     private val toRemoveClient = ArrayList<Task<Minecraft>>()
     private val toRemoveServer = ArrayList<Task<MinecraftServer>>()
 
@@ -198,6 +189,16 @@ object TickScheduler {
         // Process client tasks
         processTasks(clientTasks, toRemoveClient, client)
         processNextTickTasks(clientNextTickTasks, client)
+    }
+
+    fun drainServerQueues() {
+        serverTasks.clear()
+        serverNextTickTasks.clear()
+        for (thread in threads) {
+            thread.thread.threadedNextTickTasks.clear()
+            thread.thread.serverTickPass = false
+        }
+        nextThreadIndex = 0
     }
 
     private class Task<T>(var ticksLeft: Int, var action: (T) -> Unit)
