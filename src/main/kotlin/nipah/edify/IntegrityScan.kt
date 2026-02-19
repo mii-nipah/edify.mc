@@ -1,8 +1,7 @@
 package nipah.edify
 
 import it.unimi.dsi.fastutil.ints.Int2FloatOpenHashMap
-import it.unimi.dsi.fastutil.longs.Long2FloatOpenHashMap
-import it.unimi.dsi.fastutil.longs.Long2IntOpenHashMap
+import it.unimi.dsi.fastutil.ints.IntArrayList
 import it.unimi.dsi.fastutil.longs.Long2LongOpenHashMap
 import it.unimi.dsi.fastutil.longs.LongArrayList
 import it.unimi.dsi.fastutil.longs.LongOpenHashSet
@@ -112,108 +111,165 @@ class IntegrityScan(
         }
 
         fun updateStructureWithGround(structure: Structure, groundedBlocks: LongOpenHashSet) {
-            val pos = BlockPos.MutableBlockPos()
-            val npos = BlockPos.MutableBlockPos()
+            val size = structure.size
+            if (size == 0) return
 
-            val reachable = LongOpenHashSet()
-            val spanDist = Long2IntOpenHashMap()
-            spanDist.defaultReturnValue(Int.MAX_VALUE)
-            val deque = java.util.ArrayDeque<Long>()
-            val giter = groundedBlocks.iterator()
-            while (giter.hasNext()) {
-                val gpos = giter.nextLong()
-                if (structure.exists(gpos)) {
-                    spanDist.put(gpos, 0)
-                    deque.addLast(gpos)
-                }
-            }
-            while (deque.isNotEmpty()) {
-                val longPos = deque.pollFirst()
-                if (!reachable.add(longPos)) continue
-                val curDist = spanDist.get(longPos)
-                pos.set(longPos)
-                for (dy in intArrayOf(-1, 1)) {
-                    val nLong = BlockPos.asLong(pos.x, pos.y + dy, pos.z)
-                    if (structure.exists(nLong) && !reachable.contains(nLong) && curDist < spanDist.get(nLong)) {
-                        spanDist.put(nLong, curDist)
-                        deque.addFirst(nLong)
-                    }
-                }
-                pos.forEachHorizontalNeighborNoAlloc(npos) { n ->
-                    val nLong = n.asLong()
-                    val nd = curDist + 1
-                    if (structure.exists(nLong) && !reachable.contains(nLong) && nd < spanDist.get(nLong)) {
-                        spanDist.put(nLong, nd)
-                        deque.addLast(nLong)
-                    }
-                }
+            val unsortedPos = LongArray(size)
+            val unsortedIds = IntArray(size)
+            var minX = Int.MAX_VALUE; var maxX = Int.MIN_VALUE
+            var minY = Int.MAX_VALUE; var maxY = Int.MIN_VALUE
+            var minZ = Int.MAX_VALUE; var maxZ = Int.MIN_VALUE
+            var extractIdx = 0
+            val extractIter = structure.longIterator()
+            while (extractIter.hasNext()) {
+                val entry = extractIter.next()
+                val key = entry.longKey
+                unsortedPos[extractIdx] = key
+                unsortedIds[extractIdx] = Float2(entry.longValue).xi
+                val ex = BlockPos.getX(key); val ey = BlockPos.getY(key); val ez = BlockPos.getZ(key)
+                if (ex < minX) minX = ex; if (ex > maxX) maxX = ex
+                if (ey < minY) minY = ey; if (ey > maxY) maxY = ey
+                if (ez < minZ) minZ = ez; if (ez > maxZ) maxZ = ez
+                extractIdx++
             }
 
-            val allBlocks = LongArrayList(structure.size)
-            val biter = structure.longIterator()
-            while (biter.hasNext()) {
-                allBlocks.add(biter.next().longKey)
+            val yRange = maxY - minY + 1
+            val counts = IntArray(yRange)
+            for (i in 0 until extractIdx) counts[BlockPos.getY(unsortedPos[i]) - minY]++
+            val offsets = IntArray(yRange)
+            var off = 0
+            for (yi in yRange - 1 downTo 0) { offsets[yi] = off; off += counts[yi] }
+            val allPos = LongArray(extractIdx)
+            val allSids = IntArray(extractIdx)
+            for (i in 0 until extractIdx) {
+                val yi = BlockPos.getY(unsortedPos[i]) - minY
+                val dest = offsets[yi]++
+                allPos[dest] = unsortedPos[i]
+                allSids[dest] = unsortedIds[i]
             }
-            allBlocks.sortWith { a, b -> BlockPos.getY(b).compareTo(BlockPos.getY(a)) }
 
-            val loadOnBlock = Long2FloatOpenHashMap()
-            loadOnBlock.defaultReturnValue(0f)
-            val rawLoad = Long2FloatOpenHashMap()
-            rawLoad.defaultReturnValue(0f)
+            val xDim = maxX - minX + 3
+            val zStride = xDim
+            val yStride = xDim * (maxZ - minZ + 3)
+            val gridSize = yStride * (maxY - minY + 3)
+            val grid = IntArray(gridSize)
+            grid.fill(-1)
+            val gIdx = IntArray(extractIdx)
+            for (i in 0 until extractIdx) {
+                val lp = allPos[i]
+                val gi = (BlockPos.getX(lp) - minX + 1) + (BlockPos.getZ(lp) - minZ + 1) * zStride + (BlockPos.getY(lp) - minY + 1) * yStride
+                grid[gi] = i
+                gIdx[i] = gi
+            }
 
+            val wBySid = Int2FloatOpenHashMap()
+            val rBySid = Int2FloatOpenHashMap()
+            val allWeights = FloatArray(extractIdx)
+            val allResist = FloatArray(extractIdx)
+            for (i in 0 until extractIdx) {
+                val sid = allSids[i]
+                if (!wBySid.containsKey(sid)) {
+                    wBySid.put(sid, structure.weightOfId(sid))
+                    rBySid.put(sid, structure.resistanceOfId(sid))
+                }
+                allWeights[i] = wBySid.get(sid)
+                allResist[i] = rBySid.get(sid)
+            }
+
+            val groundedArr = BooleanArray(extractIdx)
+            val gIter = groundedBlocks.longIterator()
+            while (gIter.hasNext()) {
+                val gp = gIter.nextLong()
+                val gi = (BlockPos.getX(gp) - minX + 1) + (BlockPos.getZ(gp) - minZ + 1) * zStride + (BlockPos.getY(gp) - minY + 1) * yStride
+                if (gi in 0 until gridSize) {
+                    val idx = grid[gi]
+                    if (idx >= 0) groundedArr[idx] = true
+                }
+            }
+
+            val reachableArr = BooleanArray(extractIdx)
+            val spanDistArr = IntArray(extractIdx) { Int.MAX_VALUE }
+            val bfsFront = IntArrayList()
+            val bfsBack = IntArrayList()
+            var backRead = 0
+            for (i in 0 until extractIdx) {
+                if (groundedArr[i]) { spanDistArr[i] = 0; bfsBack.add(i) }
+            }
+            while (bfsFront.isNotEmpty() || backRead < bfsBack.size) {
+                val ci = if (bfsFront.isNotEmpty()) bfsFront.removeInt(bfsFront.size - 1)
+                else bfsBack.getInt(backRead++)
+                if (reachableArr[ci]) continue
+                reachableArr[ci] = true
+                val curDist = spanDistArr[ci]
+                val gi = gIdx[ci]
+                var ni = grid[gi - yStride]
+                if (ni >= 0 && !reachableArr[ni] && curDist < spanDistArr[ni]) {
+                    spanDistArr[ni] = curDist; bfsFront.add(ni)
+                }
+                ni = grid[gi + yStride]
+                if (ni >= 0 && !reachableArr[ni] && curDist < spanDistArr[ni]) {
+                    spanDistArr[ni] = curDist; bfsFront.add(ni)
+                }
+                val nd = curDist + 1
+                ni = grid[gi - zStride]
+                if (ni >= 0 && !reachableArr[ni] && nd < spanDistArr[ni]) {
+                    spanDistArr[ni] = nd; bfsBack.add(ni)
+                }
+                ni = grid[gi + zStride]
+                if (ni >= 0 && !reachableArr[ni] && nd < spanDistArr[ni]) {
+                    spanDistArr[ni] = nd; bfsBack.add(ni)
+                }
+                ni = grid[gi + 1]
+                if (ni >= 0 && !reachableArr[ni] && nd < spanDistArr[ni]) {
+                    spanDistArr[ni] = nd; bfsBack.add(ni)
+                }
+                ni = grid[gi - 1]
+                if (ni >= 0 && !reachableArr[ni] && nd < spanDistArr[ni]) {
+                    spanDistArr[ni] = nd; bfsBack.add(ni)
+                }
+            }
+
+            val loadArr = FloatArray(extractIdx)
+            val rawLoadArr = FloatArray(extractIdx)
             var totalWeight = 0f
-            val blockIter = allBlocks.iterator()
-            while (blockIter.hasNext()) {
-                val longPos = blockIter.nextLong()
-                pos.set(longPos)
-                val data = structure.getLong(longPos)
-                val state = Block.stateById(data.xi)
-                val weight = structure.weightOf(state)
+            for (i in 0 until extractIdx) {
+                val weight = allWeights[i]
                 totalWeight += weight
-                val totalLoad = weight + loadOnBlock.get(longPos)
-                rawLoad.put(longPos, totalLoad)
+                val totalLoad = weight + loadArr[i]
+                rawLoadArr[i] = totalLoad
 
-                if (!reachable.contains(longPos)) continue
-                if (groundedBlocks.contains(longPos)) continue
+                if (!reachableArr[i] || groundedArr[i]) continue
 
-                val belowLong = BlockPos.asLong(pos.x, pos.y - 1, pos.z)
+                val gi = gIdx[i]
+                val belowIdx = grid[gi - yStride]
                 var belowWeight = 0f
-                if (structure.exists(belowLong)) {
-                    belowWeight = structure.weightOf(Block.stateById(structure.getLong(belowLong).xi)) * GRAVITY_BIAS
+                if (belowIdx >= 0) {
+                    belowWeight = allWeights[belowIdx] * GRAVITY_BIAS
                 }
+                val n0 = grid[gi - zStride]; val n1 = grid[gi + zStride]
+                val n2 = grid[gi + 1]; val n3 = grid[gi - 1]
+                var w0 = -1f; var w1 = -1f; var w2 = -1f; var w3 = -1f
                 var horizTotal = 0f
-                pos.forEachHorizontalNeighborNoAlloc(npos) { n ->
-                    val nLong = n.asLong()
-                    if (structure.exists(nLong) && !groundedBlocks.contains(nLong)) {
-                        horizTotal += structure.weightOf(Block.stateById(structure.getLong(nLong).xi))
-                    }
-                }
+                if (n0 >= 0 && !groundedArr[n0]) { w0 = allWeights[n0]; horizTotal += w0 }
+                if (n1 >= 0 && !groundedArr[n1]) { w1 = allWeights[n1]; horizTotal += w1 }
+                if (n2 >= 0 && !groundedArr[n2]) { w2 = allWeights[n2]; horizTotal += w2 }
+                if (n3 >= 0 && !groundedArr[n3]) { w3 = allWeights[n3]; horizTotal += w3 }
                 val sumWeight = belowWeight + horizTotal
                 if (sumWeight > 0f) {
-                    if (belowWeight > 0f) {
-                        val share = belowWeight / sumWeight
-                        loadOnBlock.put(belowLong, loadOnBlock.get(belowLong) + totalLoad * share)
-                    }
-                    pos.forEachHorizontalNeighborNoAlloc(npos) { n ->
-                        val nLong = n.asLong()
-                        if (structure.exists(nLong) && !groundedBlocks.contains(nLong)) {
-                            val nw = structure.weightOf(Block.stateById(structure.getLong(nLong).xi))
-                            val share = nw / sumWeight
-                            loadOnBlock.put(nLong, loadOnBlock.get(nLong) + totalLoad * share)
-                        }
-                    }
+                    if (belowWeight > 0f) loadArr[belowIdx] += totalLoad * (belowWeight / sumWeight)
+                    if (w0 >= 0f) loadArr[n0] += totalLoad * (w0 / sumWeight)
+                    if (w1 >= 0f) loadArr[n1] += totalLoad * (w1 / sumWeight)
+                    if (w2 >= 0f) loadArr[n2] += totalLoad * (w2 / sumWeight)
+                    if (w3 >= 0f) loadArr[n3] += totalLoad * (w3 / sumWeight)
                 }
             }
 
             var groundedCount = 0
             var totalGroundedCap = 0f
-            val gcIter = groundedBlocks.longIterator()
-            while (gcIter.hasNext()) {
-                val gp = gcIter.nextLong()
-                if (structure.exists(gp)) {
+            for (i in 0 until extractIdx) {
+                if (groundedArr[i]) {
                     groundedCount++
-                    val gs = Block.stateById(structure.getLong(gp).xi)
-                    totalGroundedCap += structure.weightOf(gs) * structure.resistanceOf(gs)
+                    totalGroundedCap += allWeights[i] * allResist[i]
                 }
             }
             val overloadFactor = if (totalGroundedCap > 0f)
@@ -221,26 +277,22 @@ class IntegrityScan(
             val supportPressure = if (groundedCount > 0 && overloadFactor > 0f)
                 totalWeight / groundedCount * overloadFactor else 0f
 
-            val finalIter = allBlocks.iterator()
-            while (finalIter.hasNext()) {
-                val longPos = finalIter.nextLong()
-                val data = structure.getLong(longPos)
-                val stateId = data.xi
-                val dist = spanDist.get(longPos)
-                val pressure = if (!reachable.contains(longPos)) {
-                    rawLoad.get(longPos) * FLOATING_PENALTY
+            for (i in 0 until extractIdx) {
+                val stateId = allSids[i]
+                val dist = spanDistArr[i]
+                val pressure = if (!reachableArr[i]) {
+                    rawLoadArr[i] * FLOATING_PENALTY
                 } else {
-                    val state = Block.stateById(stateId)
-                    val weight = structure.weightOf(state)
-                    val resistance = structure.resistanceOf(state)
+                    val weight = allWeights[i]
+                    val resistance = allResist[i]
                     val spanStress = if (dist > 0) weight * dist.toFloat() * dist.toFloat() * SPAN_STRESS else 0f
                     val spanExceeded = dist > 0 && dist.toFloat() * dist.toFloat() * SPAN_LIMIT > resistance * GLOBAL_STRENGTH
-                    val base = if (spanExceeded) rawLoad.get(longPos) * FLOATING_PENALTY
-                    else rawLoad.get(longPos) + spanStress
-                    if (supportPressure > 0f && !groundedBlocks.contains(longPos)) maxOf(base, supportPressure)
+                    val base = if (spanExceeded) rawLoadArr[i] * FLOATING_PENALTY
+                    else rawLoadArr[i] + spanStress
+                    if (supportPressure > 0f && !groundedArr[i]) maxOf(base, supportPressure)
                     else base
                 }
-                structure.put(longPos, Float2.of(stateId, pressure))
+                structure.put(allPos[i], Float2.of(stateId, pressure))
             }
         }
 
@@ -275,6 +327,14 @@ class IntegrityScan(
             else BlockResistance.of(state).value.f
         }
 
+        fun weightOfId(stateId: Int): Float =
+            if (weightOverrides.containsKey(stateId)) weightOverrides.get(stateId)
+            else BlockWeight.of(Block.stateById(stateId)).value
+
+        fun resistanceOfId(stateId: Int): Float =
+            if (resistanceOverrides.containsKey(stateId)) resistanceOverrides.get(stateId)
+            else BlockResistance.of(Block.stateById(stateId)).value.f
+
         fun exists(at: BlockPos): Boolean = map.containsKey(at.asLong())
         fun exists(at: Long): Boolean = map.containsKey(at)
 
@@ -296,7 +356,13 @@ class IntegrityScan(
             map.remove(at)
         }
 
-        fun longIterator() = map.long2LongEntrySet().iterator()
+        fun clone(): Structure = Structure(
+            Long2LongOpenHashMap(map),
+            Int2FloatOpenHashMap(weightOverrides),
+            Int2FloatOpenHashMap(resistanceOverrides),
+        )
+
+        fun longIterator() = map.long2LongEntrySet().fastIterator()
 
         fun toNbt(): CompoundTag {
             val tag = CompoundTag()
@@ -377,28 +443,28 @@ class IntegrityScan(
             val result = LongArrayList()
             val iterator = longIterator()
             var maxRatioSeen = 0f
-            var maxRatioPos: BlockPos? = null
+            var maxRatioLong = Long.MIN_VALUE
             while (iterator.hasNext()) {
                 val entry = iterator.next()
                 val data = Float2(entry.longValue)
-                val state = Block.stateById(data.xi)
+                val stateId = data.xi
                 val pressure = data.y
-                val weight = weightOf(state)
+                val weight = weightOfId(stateId)
                 if (weight < 1f) continue
-                val resistance = resistanceOf(state)
+                val resistance = resistanceOfId(stateId)
                 val maxPressure = weight * resistance * GLOBAL_STRENGTH
                 if (maxPressure <= 0f) continue
                 val ratio = pressure / maxPressure
                 if (ratio > maxRatioSeen) {
                     maxRatioSeen = ratio
-                    maxRatioPos = BlockPos.of(entry.longKey)
+                    maxRatioLong = entry.longKey
                 }
                 if (pressure > maxPressure) {
                     result.add(entry.longKey)
                 }
             }
-            if (maxRatioPos != null) {
-                Edify.LOGGER.info("[IntegrityScan] Max ratio: ${"%.2f".format(maxRatioSeen)} at $maxRatioPos (${result.size} overpressured)")
+            if (maxRatioLong != Long.MIN_VALUE) {
+                Edify.LOGGER.info("[IntegrityScan] Max ratio: ${"%.2f".format(maxRatioSeen)} at ${BlockPos.of(maxRatioLong)} (${result.size} overpressured)")
             }
             return result
         }
@@ -409,11 +475,11 @@ class IntegrityScan(
             while (iterator.hasNext()) {
                 val entry = iterator.next()
                 val data = Float2(entry.longValue)
-                val state = Block.stateById(data.xi)
+                val stateId = data.xi
                 val pressure = data.y
-                val weight = weightOf(state)
+                val weight = weightOfId(stateId)
                 if (weight < 1f) continue
-                val resistance = resistanceOf(state)
+                val resistance = resistanceOfId(stateId)
                 val maxPressure = weight * resistance * GLOBAL_STRENGTH
                 if (maxPressure <= 0f) continue
                 val ratio = pressure / maxPressure

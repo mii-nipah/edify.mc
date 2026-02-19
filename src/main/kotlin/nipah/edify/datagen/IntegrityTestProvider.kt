@@ -49,10 +49,16 @@ class IntegrityTestProvider(private val output: PackOutput) : DataProvider {
                 "stone_bridge_3x1x15" to ::stoneBridge,
             )
 
+            val totalStartNs = System.nanoTime()
             for ((name, builder) in tests) {
                 val (structure, grounded) = builder()
+                val startNs = System.nanoTime()
                 progressiveDestructionTestSynthetic(name, structure, grounded)
+                val elapsedMs = (System.nanoTime() - startNs) / 1_000_000.0
+                LOGGER.info("[Synthetic] $name completed in ${"%.2f".format(elapsedMs)}ms")
             }
+            val totalMs = (System.nanoTime() - totalStartNs) / 1_000_000.0
+            LOGGER.info("[Synthetic] All synthetic tests completed in ${"%.2f".format(totalMs)}ms")
             LOGGER.info("[Synthetic] ========================================")
         }
 
@@ -174,7 +180,7 @@ class IntegrityTestProvider(private val output: PackOutput) : DataProvider {
             LOGGER.info("[Synthetic] === $name: ${refStructure.size} blocks, ${baseSupports.size} base supports ===")
 
             for (pct in 0..100 step 10) {
-                val structure = cloneStructure(refStructure)
+                val structure = refStructure.clone()
                 val grounded = LongOpenHashSet(refGrounded)
                 val toRemove = (baseSupports.size.toLong() * pct / 100).toInt().coerceAtMost(baseSupports.size)
 
@@ -214,16 +220,6 @@ class IntegrityTestProvider(private val output: PackOutput) : DataProvider {
             }
         }
 
-        private fun cloneStructure(src: IntegrityScan.Structure): IntegrityScan.Structure {
-            val dst = IntegrityScan.Structure()
-            src.forEach { pos, state, _ ->
-                val w = src.weightOf(state)
-                val r = src.resistanceOf(state)
-                dst.putBlock(pos.asLong(), state, w, r)
-            }
-            return dst
-        }
-
         private fun runCapturedTests() {
             val dir = File("/tmp/edify")
             if (!dir.exists() || !dir.isDirectory) {
@@ -249,10 +245,16 @@ class IntegrityTestProvider(private val output: PackOutput) : DataProvider {
             val buildings = infos.groupBy { it.third }
             LOGGER.info("[IntegrityTest] ${buildings.size} building(s)")
 
+            val totalCapturedStartNs = System.nanoTime()
             for ((_, group) in buildings.entries.sortedByDescending { it.value.maxOf { g -> g.second } }) {
                 val ref = group.maxByOrNull { it.second } ?: continue
+                val startNs = System.nanoTime()
                 progressiveDestructionTest(ref.first)
+                val elapsedMs = (System.nanoTime() - startNs) / 1_000_000.0
+                LOGGER.info("[Progressive] ${ref.first.name} completed in ${"%.2f".format(elapsedMs)}ms")
             }
+            val totalCapturedMs = (System.nanoTime() - totalCapturedStartNs) / 1_000_000.0
+            LOGGER.info("[IntegrityTest] All captured tests completed in ${"%.2f".format(totalCapturedMs)}ms")
 
             LOGGER.info("[IntegrityTest] ========================================")
             var anyRefFailed = false
@@ -297,7 +299,8 @@ class IntegrityTestProvider(private val output: PackOutput) : DataProvider {
             LOGGER.info("[Progressive] === ${file.name}: ${refStructure.size} blocks, ${baseSupports.size} base supports ===")
 
             for (pct in 0..100 step 5) {
-                val (structure, grounded) = IntegrityScan.loadTestData(file)
+                val structure = refStructure.clone()
+                val grounded = LongOpenHashSet(refGrounded)
                 val toRemove = (baseSupports.size.toLong() * pct / 100).toInt().coerceAtMost(baseSupports.size)
 
                 for (i in 0 until toRemove) {
