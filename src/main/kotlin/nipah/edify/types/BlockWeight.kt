@@ -1,5 +1,6 @@
 package nipah.edify.types
 
+import net.minecraft.tags.BlockTags
 import net.minecraft.world.level.block.Blocks
 import net.minecraft.world.level.block.state.BlockState
 import nipah.edify.utils.*
@@ -34,6 +35,9 @@ value class BlockWeight(val value: Float) {
             }
             if (state.isAir) {
                 return BlockWeight(0f)
+            }
+            if (state.has(BlockTags.IMPERMEABLE)) {
+                return BlockWeight(0.5f)
             }
             return BlockWeight(10f)
         }

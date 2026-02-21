@@ -37,7 +37,7 @@ value class BlockResistance(val value: Half) {
                 return BlockResistance(0f.half)
             }
             if (state.has(BlockTags.IMPERMEABLE)) {
-                return BlockResistance(15f.half)
+                return BlockResistance(3f.half)
             }
             return BlockResistance(3f.half)
         }

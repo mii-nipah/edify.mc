@@ -179,42 +179,29 @@ class IntegrityTestProvider(private val output: PackOutput) : DataProvider {
 
             LOGGER.info("[Synthetic] === $name: ${refStructure.size} blocks, ${baseSupports.size} base supports ===")
 
+            val refPrep = IntegrityScan.PreparedStructure.from(refStructure, refGrounded)
+
             for (pct in 0..100 step 10) {
-                val structure = refStructure.clone()
-                val grounded = LongOpenHashSet(refGrounded)
+                val prep = refPrep.clone()
                 val toRemove = (baseSupports.size.toLong() * pct / 100).toInt().coerceAtMost(baseSupports.size)
+                for (i in 0 until toRemove) prep.remove(baseSupports.getLong(i))
 
-                for (i in 0 until toRemove) {
-                    structure.remove(baseSupports.getLong(i))
-                    grounded.remove(baseSupports.getLong(i))
-                }
-
-                val initialSize = structure.size
+                val initialSize = prep.aliveCount
                 var rounds = 0
                 var totalBroken = 0
                 while (true) {
-                    IntegrityScan.updateStructureWithGround(structure, grounded)
-                    val ovp = structure.collectOverpressured()
+                    prep.simulate()
+                    val ovp = prep.collectOverpressured()
                     if (ovp.isEmpty) break
                     totalBroken += ovp.size
                     rounds++
                     val oi = ovp.iterator()
-                    while (oi.hasNext()) { structure.remove(oi.nextLong()) }
+                    while (oi.hasNext()) { prep.remove(oi.nextLong()) }
                     if (rounds > 200) break
                 }
 
-                var maxRatio = 0f
-                structure.forEach { _, state, pressure ->
-                    val w = structure.weightOf(state)
-                    if (w < 1f) return@forEach
-                    val r = structure.resistanceOf(state)
-                    val cap = w * r * IntegrityScan.GLOBAL_STRENGTH
-                    if (cap <= 0f) return@forEach
-                    val ratio = pressure / cap
-                    if (ratio > maxRatio) maxRatio = ratio
-                }
-
-                val survived = structure.size
+                val maxRatio = prep.maxRatio()
+                val survived = prep.aliveCount
                 val survivedPct = if (initialSize > 0) survived * 100f / initialSize else 0f
                 LOGGER.info("[Synthetic]   ${"%3d".format(pct)}% base removed ($toRemove/${baseSupports.size}): broken=$totalBroken rounds=$rounds survived=$survived/$initialSize (${"%.1f".format(survivedPct)}%) maxRatio=${"%.3f".format(maxRatio)}")
             }
@@ -261,8 +248,9 @@ class IntegrityTestProvider(private val output: PackOutput) : DataProvider {
             for ((_, group) in buildings.entries.sortedByDescending { it.value.maxOf { g -> g.second } }) {
                 val ref = group.maxByOrNull { it.second } ?: continue
                 val (structure, grounded) = IntegrityScan.loadTestData(ref.first)
-                IntegrityScan.updateStructureWithGround(structure, grounded)
-                val ovp = structure.collectOverpressured()
+                val refPrep = IntegrityScan.PreparedStructure.from(structure, grounded)
+                refPrep.simulate()
+                val ovp = refPrep.collectOverpressured()
                 val passed = ovp.isEmpty
                 LOGGER.info("[IntegrityTest] Reference ${ref.first.name} (${ref.second} blocks): ${if (passed) "PASS" else "FAIL (${ovp.size} overpressured)"}")
                 if (!passed) anyRefFailed = true
@@ -298,42 +286,29 @@ class IntegrityTestProvider(private val output: PackOutput) : DataProvider {
 
             LOGGER.info("[Progressive] === ${file.name}: ${refStructure.size} blocks, ${baseSupports.size} base supports ===")
 
+            val refPrep = IntegrityScan.PreparedStructure.from(refStructure, refGrounded)
+
             for (pct in 0..100 step 5) {
-                val structure = refStructure.clone()
-                val grounded = LongOpenHashSet(refGrounded)
+                val prep = refPrep.clone()
                 val toRemove = (baseSupports.size.toLong() * pct / 100).toInt().coerceAtMost(baseSupports.size)
+                for (i in 0 until toRemove) prep.remove(baseSupports.getLong(i))
 
-                for (i in 0 until toRemove) {
-                    structure.remove(baseSupports.getLong(i))
-                    grounded.remove(baseSupports.getLong(i))
-                }
-
-                val initialSize = structure.size
+                val initialSize = prep.aliveCount
                 var rounds = 0
                 var totalBroken = 0
                 while (true) {
-                    IntegrityScan.updateStructureWithGround(structure, grounded)
-                    val ovp = structure.collectOverpressured()
+                    prep.simulate()
+                    val ovp = prep.collectOverpressured()
                     if (ovp.isEmpty) break
                     totalBroken += ovp.size
                     rounds++
                     val oi = ovp.iterator()
-                    while (oi.hasNext()) { structure.remove(oi.nextLong()) }
+                    while (oi.hasNext()) { prep.remove(oi.nextLong()) }
                     if (rounds > 200) break
                 }
 
-                var maxRatio = 0f
-                structure.forEach { _, state, pressure ->
-                    val weight = structure.weightOf(state)
-                    if (weight < 1f) return@forEach
-                    val resistance = structure.resistanceOf(state)
-                    val cap = weight * resistance * IntegrityScan.GLOBAL_STRENGTH
-                    if (cap <= 0f) return@forEach
-                    val ratio = pressure / cap
-                    if (ratio > maxRatio) maxRatio = ratio
-                }
-
-                val survived = structure.size
+                val maxRatio = prep.maxRatio()
+                val survived = prep.aliveCount
                 val survivedPct = if (initialSize > 0) survived * 100f / initialSize else 0f
                 LOGGER.info("[Progressive]   ${"%3d".format(pct)}% removed ($toRemove/${baseSupports.size}): broken=$totalBroken rounds=$rounds survived=$survived/$initialSize (${"%.1f".format(survivedPct)}%) maxRatio=${"%.3f".format(maxRatio)}")
             }
