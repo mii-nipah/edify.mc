@@ -142,18 +142,26 @@ class DebrisBlock(properties: Properties): Block(
         val below = pos.below()
         val belowState = level.getBlockState(below)
         if (belowState.isAir || belowState.isEmpty || belowState.block is LiquidBlock) {
-            val allBelow = level.blockcastRay(
+            val hit = level.blockcastRay(
                 below,
                 BlockPos(0, -1, 0),
                 length = 32,
             ) ?: below
-            level.moveDebrisTo(pos, allBelow)
+            val target = hit.above()
+            if (target == pos) return
+            level.moveDebrisTo(pos, target)
             return
         }
-        if (belowState.block !is DebrisBlock) {
-            return
-        }
-        level.moveDebrisTo(pos, below)
+        if (belowState.block !is DebrisBlock) return
+        if (level.moveDebrisTo(pos, below)) return
+        val target = level.blockcastRay(
+            below,
+            BlockPos(0, -1, 0),
+            length = 32,
+        ) { it -> level.getBlockState(it).let { s -> s.block !is DebrisBlock && !s.isAir && !s.isEmpty } }
+            ?.above() ?: return
+        if (target == pos) return
+        level.moveDebrisTo(pos, target)
     }
 
     override fun onRemove(state: BlockState, level: Level, pos: BlockPos, newState: BlockState, movedByPiston: Boolean) {

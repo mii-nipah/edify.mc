@@ -121,6 +121,16 @@ class FallingBatch(
     fun tickServer(level: ServerLevel): LongArrayList {
         if (selfDestructMode) {
             selfDestructTicks++
+            tickCollisions.clear()
+            level.getBlockCollisionsOptimized(aabb, tickCollisions)
+            if (tickCollisions.any()) {
+                vel.y = vel.y.absoluteValue * 0.4f
+                vel.x *= -0.6f
+                vel.z *= -0.6f
+                pos.add(0f, vel.y, 0f)
+                foot.add(0f, vel.y, 0f)
+                invalidate()
+            }
             if (selfDestructTicks < selfDestructDelay) return LongArrayList()
             val allRemoved = LongArrayList()
             val useDebris = Configs.common.collapse.useDebris.get()

@@ -13,6 +13,7 @@ import nipah.edify.attachment.ModAttachments
 import nipah.edify.block.DebrisBlock
 import nipah.edify.block.toBlockState
 import nipah.edify.ref.IntRef
+import nipah.edify.types.BlockStrength
 import nipah.edify.utils.blockcastRay
 import nipah.edify.utils.preventNextUniversalEventFromRemovingBlock
 import org.jetbrains.annotations.UnknownNullability
@@ -424,7 +425,14 @@ fun Level.setDebrisAt(pos: BlockPos, state: BlockState, depth: Int = 0): Boolean
     if (depth > 10) return false
 
     val onGroup = blockcastRay(pos, BlockPos(0, -1, 0), 50) ?: return false
-    val pos = onGroup.immutable()
+    val hitPos = onGroup.immutable()
+    val hitBlock = getBlockState(hitPos)
+    var pos = if (hitBlock.block is DebrisBlock) hitPos else hitPos.above()
+    for (i in 0 until 10) {
+        val atPos = getBlockState(pos)
+        if (atPos.isAir || atPos.isEmpty || atPos.block is DebrisBlock) break
+        pos = pos.above()
+    }
 
     val hasDown = getBlockState(pos.below()).block is DebrisBlock
     if (hasDown) {
