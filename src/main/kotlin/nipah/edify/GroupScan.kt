@@ -34,6 +34,7 @@ class GroupScan(
     private val group = LongOpenHashSet(limit * 2)
     private val metaGroup = LongOpenHashSet(limit * 2)
     private val metaGroupWeak = LongOpenHashSet(limit * 2)
+    private val componentQueue = LongArrayFIFOQueue(limit)
 
     fun clear() {
         toVisit.clear()
@@ -179,65 +180,80 @@ class GroupScan(
             return 0
         }
 
-        metaGroupWeak.clear()
-
-        val smallestPos = BlockPos.of(toVisitWeak.firstLong()).mutable()
-        val largestPos = BlockPos.of(toVisitWeak.lastLong()).mutable()
-        var hitSolid = false
-
+        var totalAdded = 0
         var iterTicks = 0
         val pos = BlockPos.MutableBlockPos()
         val npos = BlockPos.MutableBlockPos()
+
         while (toVisitWeak.isNotEmpty()) {
-            currentCoroutineContext().ensureActive()
+            val seedLong = toVisitWeak.dequeueLong()
+            if (visited.contains(seedLong)) continue
 
-            if (visited.size > limit || toVisitWeakSet.size > limit) {
-                return 0
-            }
+            componentQueue.clear()
+            metaGroupWeak.clear()
+            componentQueue.enqueue(seedLong)
 
-            iterTicks++
-            if (iterTicks > scanPerTick) {
-                iterTicks = 0
-                yield()
-            }
+            val smallestPos = BlockPos.of(seedLong).mutable()
+            val largestPos = BlockPos.of(seedLong).mutable()
+            var hitSolid = false
+            var foundFoundation = false
 
-            val longPos = toVisitWeak.dequeueLong()
-            pos.set(longPos)
+            while (componentQueue.isNotEmpty()) {
+                currentCoroutineContext().ensureActive()
 
-            smallestPos.minAssign(pos)
-            largestPos.maxAssign(pos)
+                if (visited.size > limit) {
+                    return totalAdded
+                }
 
-            if (hitSolid.not()) {
-                val size = largestPos.distManhattan(smallestPos)
-                if (size > sizeLimitWhenHitSolid) {
+                iterTicks++
+                if (iterTicks > scanPerTick) {
+                    iterTicks = 0
+                    yield()
+                }
+
+                val longPos = componentQueue.dequeueLong()
+                pos.set(longPos)
+
+                smallestPos.minAssign(pos)
+                largestPos.maxAssign(pos)
+
+                if (hitSolid.not()) {
+                    val size = largestPos.distManhattan(smallestPos)
+                    if (size > sizeLimitWhenHitSolid) {
+                        break
+                    }
+                }
+
+                val chunk = chunks.backgroundAt(pos) ?: return totalAdded
+                val block = chunk.getBlockState(pos)
+                if (block.isAir || block.isEmpty || block.block is LiquidBlock) {
+                    continue
+                }
+                if (isFoundation(pos)) {
+                    foundFoundation = true
                     break
                 }
+                if (visited.add(longPos).not()) {
+                    continue
+                }
+                if (block.isNonSupporting().not()) {
+                    hitSolid = true
+                }
+                metaGroupWeak.add(longPos)
+                pos.forEachNeighborNoAlloc(npos) { npos ->
+                    val longNpos = npos.asLong()
+                    if (visited.contains(longNpos).not()) {
+                        componentQueue.enqueue(longNpos)
+                    }
+                }
             }
 
-            val chunk = chunks.backgroundAt(pos) ?: return 0
-            val block = chunk.getBlockState(pos)
-            if (block.isAir || block.isEmpty || block.block is LiquidBlock) {
-                continue
-            }
-            if (isFoundation(pos)) {
-                return 0
-            }
-            if (visited.add(longPos).not()) {
-                continue
-            }
-            if (block.isNonSupporting().not()) {
-                hitSolid = true
-            }
-            metaGroupWeak.add(longPos)
-            pos.forEachNeighborNoAlloc(npos) { npos ->
-                val longNpos = npos.asLong()
-                if (toVisitWeakSet.add(longNpos).not()) {
-                    return@forEachNeighborNoAlloc
-                }
-                toVisitWeak.enqueue(longNpos)
+            if (foundFoundation.not() && metaGroupWeak.isNotEmpty()) {
+                metaGroup.addAll(metaGroupWeak)
+                totalAdded += metaGroupWeak.size
             }
         }
-        metaGroup.addAll(metaGroupWeak)
-        return metaGroupWeak.size
+
+        return totalAdded
     }
 }
