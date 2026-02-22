@@ -1,6 +1,7 @@
 package nipah.edify
 
 import net.minecraft.core.BlockPos
+import net.minecraft.tags.BlockTags
 import net.minecraft.world.level.ChunkPos
 import net.minecraft.world.level.block.Blocks
 import net.minecraft.world.level.block.LiquidBlock
@@ -70,7 +71,7 @@ class ChunkData(val chunkPos: ChunkPos, chunk: LevelChunk) {
                     return@findNeighborNoAlloc foundation.boundedContainsEitherValue(npos.x, safeY(npos.y), npos.z, 1, 2)
                 } != null
                 if (anyIsFoundation) {
-                    if (block.isNaturalTerrain()) {
+                    if (block.isNaturalTerrain() && block.has(BlockTags.TERRACOTTA).not) {
                         val distanceToUpper = (pos.y - minBuildHeight).toFloat() / upperBound.toFloat()
                         foundation[pos.x, safeY(pos.y), pos.z] =
                             if (Random.nextChance(chanceToFoundation * (1f - distanceToUpper)))
