@@ -34,7 +34,6 @@ class DebrisBlock(properties: Properties): Block(
         .explosionResistance(7.0f)
         .sound(SoundType.ANCIENT_DEBRIS)
         .lightLevel { 7 }
-        .randomTicks()
 ) {
     enum class Kind(private val id: String): StringRepresentable {
         Woody("woody"),
@@ -138,7 +137,21 @@ class DebrisBlock(properties: Properties): Block(
         }
     }
 
-    override fun randomTick(state: BlockState, level: ServerLevel, pos: BlockPos, random: RandomSource) {
+    private fun scheduleFall(level: Level, pos: BlockPos) {
+        if (level.isClientSide) return
+        if (level.getBlockTicks().hasScheduledTick(pos, this)) return
+        level.scheduleTick(pos, this, 2)
+    }
+
+    override fun onPlace(state: BlockState, level: Level, pos: BlockPos, oldState: BlockState, movedByPiston: Boolean) {
+        scheduleFall(level, pos)
+    }
+
+    override fun neighborChanged(state: BlockState, level: Level, pos: BlockPos, neighborBlock: Block, neighborPos: BlockPos, movedByPiston: Boolean) {
+        scheduleFall(level, pos)
+    }
+
+    override fun tick(state: BlockState, level: ServerLevel, pos: BlockPos, random: RandomSource) {
         val below = pos.below()
         val belowState = level.getBlockState(below)
         if (belowState.isAir || belowState.isEmpty || belowState.block is LiquidBlock) {
@@ -152,16 +165,30 @@ class DebrisBlock(properties: Properties): Block(
             level.moveDebrisTo(pos, target)
             return
         }
-        if (belowState.block !is DebrisBlock) return
-        if (level.moveDebrisTo(pos, below)) return
-        val target = level.blockcastRay(
-            below,
-            BlockPos(0, -1, 0),
-            length = 32,
-        ) { it -> level.getBlockState(it).let { s -> s.block !is DebrisBlock && !s.isAir && !s.isEmpty } }
-            ?.above() ?: return
-        if (target == pos) return
-        level.moveDebrisTo(pos, target)
+        if (belowState.block is DebrisBlock) {
+            if (level.moveDebrisTo(pos, below)) return
+            val target = level.blockcastRay(
+                below,
+                BlockPos(0, -1, 0),
+                length = 32,
+            ) { it -> level.getBlockState(it).let { s -> s.block !is DebrisBlock && !s.isAir && !s.isEmpty } }
+                ?.above() ?: return
+            if (target != pos && level.moveDebrisTo(pos, target)) return
+        }
+        val diagonals = listOf(
+            pos.offset(1, -1, 0),
+            pos.offset(-1, -1, 0),
+            pos.offset(0, -1, 1),
+            pos.offset(0, -1, -1),
+        ).shuffled()
+        for (diag in diagonals) {
+            val diagState = level.getBlockState(diag)
+            if (diagState.isAir || diagState.isEmpty || diagState.block is LiquidBlock) {
+                level.moveDebrisTo(pos, diag)
+                return
+            }
+            if (diagState.block is DebrisBlock && level.moveDebrisTo(pos, diag)) return
+        }
     }
 
     override fun onRemove(state: BlockState, level: Level, pos: BlockPos, newState: BlockState, movedByPiston: Boolean) {

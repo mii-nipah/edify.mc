@@ -485,6 +485,7 @@ fun Level.moveDebrisTo(from: BlockPos, to: BlockPos): Boolean {
         setBlockAndUpdate(to, fromEntry.toBlockState())
         preventNextUniversalEventFromRemovingBlock()
         removeBlock(from, false)
+        scheduleTick(to, getBlockState(to).block, 2)
         return true
     }
     val fromSlots = run {
@@ -507,6 +508,7 @@ fun Level.moveDebrisTo(from: BlockPos, to: BlockPos): Boolean {
     setBlockAndUpdate(to, newToEntry.toBlockState())
     preventNextUniversalEventFromRemovingBlock()
     removeBlock(from, false)
+    scheduleTick(to, getBlockState(to).block, 2)
     return true
 }
 
