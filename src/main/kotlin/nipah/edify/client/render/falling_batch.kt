@@ -99,7 +99,7 @@ class FallingBatch(
     fun tick() {
         pos.add(vel)
         foot.add(vel)
-        vel.y = (vel.y - gravity).coerceAtLeast(-(gravity * 1.5f))
+        vel.y = (vel.y - gravity).coerceAtLeast(-(gravity * 5f))
         val ogRot = rotation
         rotation = rotation.tiltTowardCoM(
             comWorld = centerOfMass,
@@ -195,6 +195,7 @@ class FallingBatch(
             level.setDebrisAt(pos, block)
         }
 
+        val isSettling = vel.y.absoluteValue < gravity * 1.5f
         var moveUp = 0f
         var moves = 0
         var collisionWeight = 0f
@@ -220,7 +221,8 @@ class FallingBatch(
                     val movedBlockPos = originalBlockPos.offset(
                         pos.toVec3i() - origin.toVec3i()
                     )
-                    val travelledFactor = 1 - (1f / originalBlockPos.distManhattan(movedBlockPos))
+                    val dist = originalBlockPos.distManhattan(movedBlockPos).coerceAtLeast(1)
+                    val travelledFactor = (1f - 1f / dist).coerceAtLeast(0f)
                     val worldBlock = level.getBlockState(movedBlockPos)
                     if (worldBlock.isAir || worldBlock.isEmpty) continue
                     if (block.block is DebrisBlock) {
@@ -238,7 +240,7 @@ class FallingBatch(
                     moves++
                     collisionWeight += blockW.value
 
-                    if (Random.nextChance(blockStr.willPut)) {
+                    if (isSettling && Random.nextChance(blockStr.willPut)) {
                         level.setBlockInTheFirstFreePos(movedBlockPos, block)
                         toRemove.add(blockPair)
                         totalWeight -= blockW.value
@@ -325,43 +327,38 @@ class FallingBatch(
             }
         }
         moveUp /= moves.coerceAtLeast(1)
-        val collisionWeightPerc = collisionWeight / totalWeight
-        moveUp *= collisionWeightPerc.coerceAtMost(1f)
-        vel.x += -vel.x * (0.1f * moveUp)
-        vel.z += -vel.z * (0.1f * moveUp)
-        vel.y += moveUp
+        val collisionWeightPerc = (collisionWeight / totalWeight).coerceAtMost(1f)
+        val damping = (moveUp * collisionWeightPerc).coerceIn(0f, 0.95f)
+        vel.x *= 1f - damping * 0.3f
+        vel.z *= 1f - damping * 0.3f
+        vel.y *= 1f - damping
+        val offset = pos.toVec3i() - origin.toVec3i()
+        val speed = vel.length()
         for (entity in entities) {
-            val epos = entity.blockPosition()
-            val eposInOrigin = epos.offset(
-                pos.toVec3i() - origin.toVec3i()
-            )
-            val closestCells = space.getClosestCells(epos, 2)
-                .mapNotNull { cellKey -> space.get(cellKey) }
-            val closest = run {
-                var closest: WorldBlock? = null
-                var closestDist = Double.MAX_VALUE
-                for (cell in closestCells) {
-                    for (blockPair in cell) {
-                        val dist = blockPair.pos.distSqr(eposInOrigin)
-                        if (dist < closestDist) {
-                            closestDist = dist
-                            closest = blockPair
-                        }
-                    }
-                }
-                closest
-            } ?: continue
-            if (entity.boundingBox.inflate(2.0).contains(closest.pos.toVec3()).not()) continue
-            val (bpos, bstate) = closest
-            val movedPos = bpos.offset(pos.toVec3i() - origin.toVec3i())
-            val travelledFactor = (1 - (1f / bpos.distManhattan(movedPos))).coerceAtLeast(0.1f)
-            val blockStr = BlockStrength.of(bstate)
-            val blockW = BlockWeight.of(bstate)
-            val damage = blockStr.intensity(blockW) * travelledFactor
             if (entity.isInvulnerable || entity.isSpectator) continue
+            val epos = entity.blockPosition()
+            val eposInOrigin = epos.subtract(offset)
+            val closestCells = space.getClosestCells(eposInOrigin, 2)
+                .mapNotNull { cellKey -> space.get(cellKey) }
+            val entityBox = entity.boundingBox.inflate(0.5)
+            var totalDamage = 0f
+            for (cell in closestCells) {
+                for (blockPair in cell) {
+                    val movedPos = blockPair.pos.offset(offset)
+                    val blockBox = AABB.unitCubeFromLowerCorner(movedPos.toVec3())
+                    if (entityBox.intersects(blockBox).not()) continue
+                    val dist = blockPair.pos.distManhattan(movedPos).coerceAtLeast(1)
+                    val travelledFactor = (1f - 1f / dist).coerceAtLeast(0.1f)
+                    val blockStr = BlockStrength.of(blockPair.state)
+                    val blockW = BlockWeight.of(blockPair.state)
+                    totalDamage += blockStr.intensity(blockW) * travelledFactor
+                }
+            }
+            if (totalDamage <= 0f) continue
+            val speedFactor = (speed / gravity).coerceIn(0.5f, 5f)
             entity.hurt(
                 level.damageSources().fall(),
-                damage
+                totalDamage * speedFactor
             )
         }
         return allRemovedBlocks
